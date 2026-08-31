@@ -25,6 +25,7 @@ class DatawellServiceProvider extends ServiceProvider
 
         $this->app->singleton(Registry::class);
         $this->app->singleton(TimezoneResolver::class);
+        $this->app->singleton(Executor::class);
     }
 
     /**

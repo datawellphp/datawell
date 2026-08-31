@@ -32,6 +32,7 @@ final class QueryRequest
         public readonly array $aggregates = [],
         public readonly ?array $select = null,
         public readonly PageSpec $page = new PageSpec,
+        public readonly bool $pageProvided = false,
     ) {}
 
     /**
@@ -81,7 +82,7 @@ final class QueryRequest
         $errors->throwIfAny();
 
         /** @var array<string, mixed> $parameters */
-        return new self($source, $parameters, $search, $filters, $sorts, $groupBy, $aggregates, $select, $page);
+        return new self($source, $parameters, $search, $filters, $sorts, $groupBy, $aggregates, $select, $page, isset($data['page']));
     }
 
     private static function parseGroup(mixed $node, string $path, Errors $errors, bool $root = false): FilterGroup
@@ -391,7 +392,9 @@ final class QueryRequest
             $data['select'] = $this->select;
         }
 
-        $data['page'] = $this->page->toArray();
+        if (! $this->isAggregate()) {
+            $data['page'] = $this->page->toArray();
+        }
 
         return $data;
     }

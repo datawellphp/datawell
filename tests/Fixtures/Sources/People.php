@@ -9,6 +9,7 @@ use Datawell\Actions\ServerAction;
 use Datawell\Attributes\Model;
 use Datawell\DataSource;
 use Datawell\Enums\ActionTarget;
+use Datawell\Enums\AggregateType;
 use Datawell\Enums\Grain;
 use Datawell\Fields\BooleanField;
 use Datawell\Fields\DateField;
@@ -58,7 +59,8 @@ class People extends DataSource
             TextField::make('name')->sortable()->filterable()->searchable(),
             TextField::make('email')->filterable()->searchable()->visibleWhen('view-contact-details'),
             EnumField::make('role', Role::class)->filterable()->groupable(),
-            NumberField::make('age')->sortable()->filterable()->nullable(),
+            NumberField::make('age')->sortable()->filterable()->nullable()
+                ->aggregates(AggregateType::Sum, AggregateType::Avg, AggregateType::Min, AggregateType::Max),
             BooleanField::make('active')->filterable(),
             TextField::make('notes')->nullable()->filterable(),
             DateField::make('joined_on')->sortable()->filterable()->nullable()

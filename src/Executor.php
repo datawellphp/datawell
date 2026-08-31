@@ -8,6 +8,8 @@ use Carbon\CarbonImmutable;
 use Datawell\Actions\Action;
 use Datawell\Compilation\Compiler;
 use Datawell\Compilation\Cursor;
+use Datawell\Compilation\Grouping;
+use Datawell\Compilation\Raw;
 use Datawell\Exceptions\SourceNotFoundException;
 use Datawell\Execution\Channel;
 use Datawell\Execution\Context;
@@ -15,6 +17,7 @@ use Datawell\Fields\Field;
 use Datawell\Filters\Filter;
 use Datawell\Query\FilterGroup;
 use Datawell\Query\QueryRequest;
+use Datawell\Result\BucketResult;
 use Datawell\Result\EntityRef;
 use Datawell\Result\PageMeta;
 use Datawell\Result\Result;
@@ -44,6 +47,7 @@ class Executor
         protected RequestValidator $validator,
         protected ProvenanceResolver $provenance,
         protected Compiler $compiler,
+        protected Grouping $grouping,
         protected Serializer $serializer,
         protected Repository $config,
     ) {
@@ -65,7 +69,11 @@ class Executor
         $source = $this->registry->findFor($request->source, $user);
         $context = $this->context($user, $channel);
 
-        [, $errors] = $this->validator->validate($source, $request, $context);
+        [$params, $errors] = $this->validator->validate($source, $request, $context);
+
+        if ($errors === [] && $request->isAggregate()) {
+            $errors = $this->driverErrors($source->query($params), $request, $source->definition(), $context);
+        }
 
         return new ValidationReport($request, $errors);
     }
@@ -79,7 +87,7 @@ class Executor
      * @throws SourceNotFoundException
      * @throws ValidationException
      */
-    public function run(QueryRequest|array $request, Authenticatable $user, Channel $channel = Channel::Direct): Result
+    public function run(QueryRequest|array $request, Authenticatable $user, Channel $channel = Channel::Direct): Result|BucketResult
     {
         $request = $request instanceof QueryRequest ? $request : QueryRequest::fromArray($request);
         $source = $this->registry->findFor($request->source, $user);
@@ -100,10 +108,22 @@ class Executor
         $query = $source->query($params);
         $keyName = $this->keyNameOf($query, $definition->model());
 
+        if ($applied->isAggregate()) {
+            $driverErrors = $this->driverErrors($query, $applied, $definition, $context);
+
+            if ($driverErrors !== []) {
+                throw ValidationException::withErrors($driverErrors);
+            }
+        }
+
         $this->compiler->filters($query, $applied->filters, $definition, $context);
 
         if ($applied->search !== null && $applied->search !== '') {
             $this->compiler->search($query, $applied->search, $visibleFields);
+        }
+
+        if ($applied->isAggregate()) {
+            return $this->buckets($query, $applied, $definition, $context);
         }
 
         $order = $this->compiler->sorts($query, $applied->sorts, $definition, $keyName);
@@ -145,6 +165,58 @@ class Executor
             : PageMeta::offset($size, $applied->page->number, $hasMore, $total);
 
         return new Result($serialized, $meta, $applied);
+    }
+
+    /**
+     * The reports path: group + aggregate, hard-capped with an explicit truncated flag (D39).
+     *
+     * @param  EloquentBuilder<covariant Model>|QueryBuilder  $query
+     */
+    protected function buckets(EloquentBuilder|QueryBuilder $query, QueryRequest $applied, Definition $definition, Context $context): BucketResult
+    {
+        $this->grouping->compile($query, $applied->groupBy, $applied->aggregates, $definition, $context);
+        $this->grouping->order($query, $applied->groupBy, $applied->aggregates);
+
+        $cap = $this->bucketCap();
+        $query->limit($cap + 1);
+
+        /** @var list<object> $rows */
+        $rows = $query->get()->all();
+        $truncated = count($rows) > $cap;
+        $rows = array_slice($rows, 0, $cap);
+
+        $buckets = array_map(
+            fn (object $row): array => $this->grouping->bucket($row, $applied->groupBy, $applied->aggregates, $definition, $context),
+            $rows,
+        );
+
+        return new BucketResult($buckets, $truncated, $applied);
+    }
+
+    /**
+     * Checks that need the connection: bucketing an instant by grain in a non-UTC
+     * timezone is unsupported on SQLite and refused explicitly (D51).
+     *
+     * @param  EloquentBuilder<covariant Model>|QueryBuilder  $query
+     * @return array<string, list<string>>
+     */
+    protected function driverErrors(EloquentBuilder|QueryBuilder $query, QueryRequest $request, Definition $definition, Context $context): array
+    {
+        $index = Grouping::unsupportedGrain($query, $request->groupBy, $definition, $context);
+
+        if ($index === null) {
+            return [];
+        }
+
+        $group = $request->groupBy[$index];
+
+        return ['groupBy.'.$index.'.grain' => [sprintf(
+            'Field "%s" cannot be bucketed by %s in %s on %s: this driver cannot convert timezones, so date-time grains require a UTC effective timezone here.',
+            $group->key,
+            (string) $group->grain,
+            $context->timezone,
+            Raw::driver($query),
+        )]];
     }
 
     /**
@@ -229,6 +301,7 @@ class Executor
             $request->aggregates,
             $request->select,
             $request->page,
+            $request->pageProvided,
         );
     }
 
@@ -275,6 +348,13 @@ class Executor
         }
 
         return $model === null ? 'id' : (new $model)->getKeyName();
+    }
+
+    protected function bucketCap(): int
+    {
+        $cap = $this->config->get('datawell.buckets.max');
+
+        return is_int($cap) && $cap > 0 ? $cap : 1000;
     }
 
     protected function defaultPageSize(): int

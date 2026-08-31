@@ -208,6 +208,14 @@ class RequestValidator
             $errors->add('aggregates', 'A grouped request needs at least one aggregate.');
         }
 
+        if ($request->isAggregate()) {
+            foreach (['sorts' => $request->sorts !== [], 'select' => $request->select !== null, 'page' => $request->pageProvided] as $key => $present) {
+                if ($present) {
+                    $errors->add($key, sprintf('A grouped request does not accept "%s"; buckets are ordered and capped by the executor.', $key));
+                }
+            }
+        }
+
         $ceiling = $this->pageCeiling($context);
 
         if ($request->page->size !== null && $request->page->size > $ceiling) {

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Datawell\Compilation;
 
 use Illuminate\Contracts\Database\Query\Expression;
+use Illuminate\Database\Connection;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 
@@ -17,6 +18,18 @@ use Illuminate\Database\Query\Builder as QueryBuilder;
  */
 final class Raw
 {
+    /**
+     * The driver name behind a query (`sqlite`, `mysql`, `mariadb`, `pgsql`, …).
+     *
+     * @param  EloquentBuilder<covariant \Illuminate\Database\Eloquent\Model>|QueryBuilder  $query
+     */
+    public static function driver(EloquentBuilder|QueryBuilder $query): string
+    {
+        $connection = $query->getConnection();
+
+        return $connection instanceof Connection ? $connection->getDriverName() : 'unknown';
+    }
+
     /** The escape character declared on every LIKE the package emits. */
     public const string ESCAPE = '\\';
 
@@ -31,6 +44,69 @@ final class Raw
         $sql = $query->getGrammar()->wrap($column).' LIKE ? ESCAPE ?';
 
         return $query->getConnection()->raw($sql); // @phpstan-ignore argument.type (grammar-wrapped identifier, values are bindings)
+    }
+
+    /**
+     * `<fn>(<column>)` for a sum/avg/min/max measure.
+     *
+     * @param  EloquentBuilder<covariant \Illuminate\Database\Eloquent\Model>|QueryBuilder  $query
+     */
+    public static function aggregate(EloquentBuilder|QueryBuilder $query, string $fn, string $column): Expression
+    {
+        $sql = strtoupper($fn).'('.$query->getGrammar()->wrap($column).')';
+
+        return $query->getConnection()->raw($sql); // @phpstan-ignore argument.type (grammar-wrapped identifier, function name from the AggregateType enum)
+    }
+
+    /**
+     * The start date of the calendar bucket a date/date-time column falls in — day, week
+     * (Monday), month, quarter or year — as a `YYYY-MM-DD` string, computed database-side
+     * per driver (D15). Instants are converted to the effective timezone first via the
+     * driver's own conversion (`CONVERT_TZ`, `AT TIME ZONE`); the timezone name is passed
+     * as a binding, appended by the caller in select order.
+     *
+     * @param  EloquentBuilder<covariant \Illuminate\Database\Eloquent\Model>|QueryBuilder  $query
+     * @param  string|null  $timezone  null for wall dates, or when no conversion is needed
+     * @return array{Expression, list<string>} the expression and its bindings
+     */
+    public static function grain(EloquentBuilder|QueryBuilder $query, string $column, string $grain, ?string $timezone): array
+    {
+        $driver = self::driver($query);
+        $col = $query->getGrammar()->wrap($column);
+        $bindings = [];
+
+        $converts = $timezone !== null && in_array($driver, ['mysql', 'mariadb', 'pgsql'], true);
+
+        if ($converts) {
+            $col = $driver === 'pgsql'
+                ? "(({$col} AT TIME ZONE 'UTC') AT TIME ZONE ?)"
+                : "CONVERT_TZ({$col}, '+00:00', ?)";
+            $bindings[] = $timezone;
+        }
+
+        $sql = match ($driver) {
+            'mysql', 'mariadb' => match ($grain) {
+                'day' => "DATE_FORMAT({$col}, '%Y-%m-%d')",
+                'week' => "DATE_FORMAT(DATE_SUB({$col}, INTERVAL WEEKDAY({$col}) DAY), '%Y-%m-%d')",
+                'month' => "DATE_FORMAT({$col}, '%Y-%m-01')",
+                'quarter' => "CONCAT(YEAR({$col}), '-', LPAD((QUARTER({$col}) - 1) * 3 + 1, 2, '0'), '-01')",
+                default => "DATE_FORMAT({$col}, '%Y-01-01')",
+            },
+            'pgsql' => "to_char(date_trunc('{$grain}', {$col}), 'YYYY-MM-DD')",
+            default => match ($grain) {
+                'day' => "strftime('%Y-%m-%d', {$col})",
+                'week' => "date({$col}, '-6 days', 'weekday 1')",
+                'month' => "strftime('%Y-%m-01', {$col})",
+                'quarter' => "strftime('%Y-', {$col}) || substr('01040710', ((CAST(strftime('%m', {$col}) AS INTEGER) + 2) / 3 - 1) * 2 + 1, 2) || '-01'",
+                default => "strftime('%Y-01-01', {$col})",
+            },
+        };
+
+        if ($converts && $driver !== 'pgsql' && $grain === 'week') {
+            $bindings[] = $timezone; // the column appears twice in the week expression
+        }
+
+        return [$query->getConnection()->raw($sql), $bindings]; // @phpstan-ignore argument.type (grammar-wrapped identifier; grain and driver are package enums; timezone is a binding)
     }
 
     /**

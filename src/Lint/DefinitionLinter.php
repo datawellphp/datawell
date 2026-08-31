@@ -18,6 +18,7 @@ use Datawell\Filters\Filter;
 use Datawell\Operators\Operator;
 use Datawell\Parameter;
 use Datawell\Registry;
+use Datawell\Relations\RelationIntrospector;
 use Datawell\Relations\RelationResolver;
 use Datawell\Sorts\Sort;
 use Datawell\Support\Key;
@@ -111,6 +112,7 @@ class DefinitionLinter
             ));
         }
 
+        $this->lintAggregation($source, $field, $definition);
         $this->lintPath($source, $field, $definition, $registry);
 
         if ($field->isMany()) {
@@ -254,6 +256,41 @@ class DefinitionLinter
     }
 
     /**
+     * An aggregate field (D55) names one direct relation of the model, a column unless it
+     * counts, and cannot be searched (its value is a number or a date, never text to scan).
+     */
+    protected function lintAggregation(string $source, Field $field, Definition $definition): void
+    {
+        $aggregation = $field->getAggregation();
+
+        if ($aggregation === null) {
+            return;
+        }
+
+        $key = $field->getKey();
+
+        if ($field->isSearchable()) {
+            $this->error($source, sprintf('field "%s" is an aggregate (%s) and cannot be searchable', $key, $aggregation->describe()));
+        }
+
+        if (str_contains($aggregation->relation, '.')) {
+            $this->error($source, sprintf('field "%s" aggregates over "%s"; an aggregate spans one direct relation, not a path', $key, $aggregation->relation));
+
+            return;
+        }
+
+        $model = $definition->model();
+
+        if ($model === null) {
+            return;
+        }
+
+        if ((new RelationIntrospector)->resolve($model, $aggregation->relation)->related === null) {
+            $this->error($source, sprintf('field "%s" aggregates over "%s", which is not a relation on %s', $key, $aggregation->relation, $model));
+        }
+    }
+
+    /**
      * Paths are checked against the model where there is one (D20, D54): a dotted path
      * must cross real relations, a relation field must end on a relation and resolve to
      * exactly one target source, and a to-many relation field must be a direct relation.
@@ -263,6 +300,10 @@ class DefinitionLinter
         $model = $definition->model();
 
         if ($model === null) {
+            return;
+        }
+
+        if ($field->getAggregation() !== null) {
             return;
         }
 

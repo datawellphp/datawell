@@ -48,7 +48,7 @@ class Documents extends DataSource
         return [
             TextField::make('title')->sortable()->filterable()->searchable(),
             RelationField::make('owner', from: 'owner')->filterable(),
-            NumberField::make('signatures_count')->sortable()->filterable(),
+            NumberField::make('signatures_count')->countOf('signatures')->sortable()->filterable(),
             DateTimeField::make('created_at')->sortable()->filterable(),
             DateTimeField::make('archived_at')->nullable()->filterable(),
         ];

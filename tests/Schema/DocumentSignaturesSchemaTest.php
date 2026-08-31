@@ -34,7 +34,7 @@ it('matches the worked example shape from the design pack', function (): void {
     ]]);
 
     expect(array_column($schema['fields'], 'key'))
-        ->toBe(['signer', 'status', 'requested_at', 'signed_at', 'tags', 'reminders_count']);
+        ->toBe(['signer', 'status', 'requested_at', 'signed_at', 'tags', 'reminders_count', 'last_reminder_at']);
 
     expect(array_column($schema['filters'], 'label', 'key')['signed_at'])->toBe('Date signed')
         ->and(array_column($schema['sorts'], 'label', 'key')['signed_at'])->toBe('Date signed');

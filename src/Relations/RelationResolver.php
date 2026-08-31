@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Datawell\Relations;
 
 use Closure;
+use Datawell\Compilation\Raw;
 use Datawell\DataSource;
+use Datawell\Enums\AggregateType;
 use Datawell\Enums\Cardinality;
 use Datawell\Exceptions\DefinitionException;
 use Datawell\Exceptions\UnsupportedException;
@@ -13,6 +15,7 @@ use Datawell\Fields\Field;
 use Datawell\Fields\RelationField;
 use Datawell\Registry;
 use Datawell\Result\EntityRef;
+use Illuminate\Contracts\Database\Query\Expression;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
@@ -37,6 +40,9 @@ class RelationResolver
 
     /** @var array<int, array<string, string>> joined relation paths per base query, by alias */
     protected array $joins = [];
+
+    /** @var array<int, array<string, true>> aggregate fields already selected per base query */
+    protected array $selected = [];
 
     public function __construct(
         protected Registry $registry,
@@ -169,6 +175,14 @@ class RelationResolver
         $cap = $this->cap;
 
         foreach ($fields as $field) {
+            $aggregation = $field->getAggregation();
+
+            if ($aggregation !== null) {
+                $this->selectAggregate($query, $field, $aggregation);
+
+                continue;
+            }
+
             $resolved = $this->resolveField($query, $field);
 
             if (! $resolved->path->crossesRelation()) {
@@ -218,6 +232,73 @@ class RelationResolver
         }
 
         $query->has($path->relation(), $exists ? '>=' : '<', 1, $boolean, $constraint);
+    }
+
+    /**
+     * Aggregate-field strategy (§6, D55): the relation's existence query, re-pointed at
+     * an aggregate, as a correlated subselect — the same construction Eloquent's
+     * withCount() uses, so relation constraints and scopes apply. Returns the expression
+     * and the bindings the caller must place in the clause it lands in.
+     *
+     * @param  EloquentBuilder<covariant Model>|QueryBuilder  $query
+     * @return array{Expression, list<mixed>}
+     */
+    public function aggregate(EloquentBuilder|QueryBuilder $query, Aggregation $aggregation): array
+    {
+        if (! $query instanceof EloquentBuilder) {
+            throw new UnsupportedException(sprintf('Aggregating "%s" needs an Eloquent builder; the source query is a plain query builder.', $aggregation->describe()));
+        }
+
+        $model = $query->getModel();
+        $relation = Relation::noConstraints(static fn (): Relation => $model->{$aggregation->relation}());
+        $related = $relation->getRelated();
+        $grammar = $query->getQuery()->getGrammar();
+
+        $expression = $aggregation->fn === AggregateType::Count
+            ? 'count(*)'
+            : sprintf('%s(%s)', $aggregation->fn->value, $grammar->wrap($related->qualifyColumn((string) $aggregation->column)));
+
+        $subquery = $relation
+            ->getRelationExistenceQuery($related->newQuery(), $query) // @phpstan-ignore argument.type (the outer builder's covariant model generic cannot satisfy the relation's invariant parameter; Eloquent's own withAggregate() makes the same call)
+            ->select($query->getConnection()->raw($expression)) // @phpstan-ignore argument.type (function name from the AggregateType enum around a grammar-wrapped identifier)
+            ->setBindings([], 'select')
+            ->mergeConstraintsFrom($relation->getQuery())
+            ->toBase();
+
+        $subquery->orders = null;
+        $subquery->setBindings([], 'order');
+
+        if (is_array($subquery->columns) && count($subquery->columns) > 1) {
+            $subquery->columns = [$subquery->columns[0]];
+            $subquery->bindings['select'] = [];
+        }
+
+        return [Raw::subquery($query, $subquery), $subquery->getBindings()];
+    }
+
+    /**
+     * Select an aggregate field under its key, once per query — display and sort both
+     * need it on the row.
+     *
+     * @param  EloquentBuilder<covariant Model>|QueryBuilder  $query
+     */
+    public function selectAggregate(EloquentBuilder|QueryBuilder $query, Field $field, Aggregation $aggregation): void
+    {
+        $base = $query instanceof EloquentBuilder ? $query->getQuery() : $query;
+        $id = spl_object_id($base);
+
+        if (isset($this->selected[$id][$field->getKey()])) {
+            return;
+        }
+
+        if ($base->columns === null) {
+            $query->select(self::qualify($query, '*'));
+        }
+
+        [$expression, $bindings] = $this->aggregate($query, $aggregation);
+        $query->addSelect($query->getConnection()->raw($expression->getValue($base->getGrammar()).' as '.$base->getGrammar()->wrap($field->getKey()))); // @phpstan-ignore argument.type (grammar-wrapped alias around the subquery expression)
+        $base->addBinding($bindings, 'select');
+        $this->selected[$id][$field->getKey()] = true;
     }
 
     /**

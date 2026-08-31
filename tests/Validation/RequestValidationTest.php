@@ -87,7 +87,7 @@ it('rejects the documented failure cases', function (array $wire, string $path, 
     'grain on non-date' => [['groupBy' => [['key' => 'status', 'grain' => 'day']], 'aggregates' => [['fn' => 'count']]], 'groupBy.0.grain', 'Field "status" cannot be bucketed by grain.'],
     'group without aggregate' => [['groupBy' => [['key' => 'status']]], 'aggregates', 'A grouped request needs at least one aggregate.'],
     'aggregate needs field' => [['aggregates' => [['fn' => 'sum']]], 'aggregates.0.field', 'Aggregate "sum" needs a field.'],
-    'aggregate not permitted' => [['aggregates' => [['fn' => 'sum', 'field' => 'reminders_count']]], 'aggregates.0.fn', 'Aggregate "sum" is not available for "reminders_count".'],
+    'aggregate not permitted' => [['aggregates' => [['fn' => 'min', 'field' => 'reminders_count']]], 'aggregates.0.fn', 'Aggregate "min" is not available for "reminders_count".'],
     'count takes no field' => [['aggregates' => [['fn' => 'count', 'field' => 'status']]], 'aggregates.0.field', 'The count aggregate takes no field.'],
     'page ceiling' => [['page' => ['size' => 101]], 'page.size', 'Page size may not exceed 100.'],
 ]);

@@ -114,7 +114,25 @@
             "type": "number",
             "cardinality": "single",
             "sortable": true,
-            "filterable": true
+            "filterable": true,
+            "groupable": true,
+            "aggregates": [
+                "sum",
+                "avg"
+            ]
+        },
+        {
+            "key": "last_reminder_at",
+            "label": "Last Reminder At",
+            "type": "dateTime",
+            "cardinality": "single",
+            "sortable": true,
+            "filterable": true,
+            "groupable": true,
+            "nullable": true,
+            "grains": [
+                "day"
+            ]
         }
     ],
     "filters": [
@@ -199,6 +217,19 @@
                 "lte",
                 "between"
             ]
+        },
+        {
+            "key": "last_reminder_at",
+            "label": "Last Reminder At",
+            "type": "dateTime",
+            "operators": [
+                "on",
+                "before",
+                "after",
+                "between",
+                "isEmpty",
+                "isNotEmpty"
+            ]
         }
     ],
     "sorts": [
@@ -221,6 +252,10 @@
         {
             "key": "reminders_count",
             "label": "Reminders Count"
+        },
+        {
+            "key": "last_reminder_at",
+            "label": "Last Reminder At"
         }
     ],
     "defaultSort": [

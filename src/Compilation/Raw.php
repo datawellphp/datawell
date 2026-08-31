@@ -40,7 +40,7 @@ final class Raw
      *
      * @param  EloquentBuilder<covariant \Illuminate\Database\Eloquent\Model>|QueryBuilder  $query
      */
-    public static function like(EloquentBuilder|QueryBuilder $query, string $column): Expression
+    public static function like(EloquentBuilder|QueryBuilder $query, string|Expression $column): Expression
     {
         $operator = self::driver($query) === 'pgsql' ? 'ILIKE' : 'LIKE';
         $sql = $query->getGrammar()->wrap($column).' '.$operator.' ? ESCAPE ?';
@@ -53,7 +53,7 @@ final class Raw
      *
      * @param  EloquentBuilder<covariant \Illuminate\Database\Eloquent\Model>|QueryBuilder  $query
      */
-    public static function aggregate(EloquentBuilder|QueryBuilder $query, string $fn, string $column): Expression
+    public static function aggregate(EloquentBuilder|QueryBuilder $query, string $fn, string|Expression $column): Expression
     {
         $sql = strtoupper($fn).'('.$query->getGrammar()->wrap($column).')';
 
@@ -71,7 +71,7 @@ final class Raw
      * @param  string|null  $timezone  null for wall dates, or when no conversion is needed
      * @return array{Expression, list<string>} the expression and its bindings
      */
-    public static function grain(EloquentBuilder|QueryBuilder $query, string $column, string $grain, ?string $timezone): array
+    public static function grain(EloquentBuilder|QueryBuilder $query, string|Expression $column, string $grain, ?string $timezone): array
     {
         $driver = self::driver($query);
         $col = $query->getGrammar()->wrap($column);
@@ -110,12 +110,24 @@ final class Raw
     }
 
     /**
+     * A correlated subselect as a parenthesised expression, usable wherever a column is —
+     * the compiled form of an aggregate field (D55). The subquery's bindings are the
+     * caller's to place, in the binding group of the clause the expression lands in.
+     *
+     * @param  EloquentBuilder<covariant \Illuminate\Database\Eloquent\Model>|QueryBuilder  $query
+     */
+    public static function subquery(EloquentBuilder|QueryBuilder $query, QueryBuilder $subquery): Expression
+    {
+        return $query->getConnection()->raw('('.$subquery->toSql().')'); // @phpstan-ignore argument.type (SQL compiled by the grammar from a relation-existence query; its values travel as bindings)
+    }
+
+    /**
      * `<column> IS NULL` as an ORDER BY term: makes null placement deterministic across
      * drivers (nulls last), which keyset pagination depends on (D53).
      *
      * @param  EloquentBuilder<covariant \Illuminate\Database\Eloquent\Model>|QueryBuilder  $query
      */
-    public static function isNull(EloquentBuilder|QueryBuilder $query, string $column): Expression
+    public static function isNull(EloquentBuilder|QueryBuilder $query, string|Expression $column): Expression
     {
         $sql = $query->getGrammar()->wrap($column).' IS NULL';
 

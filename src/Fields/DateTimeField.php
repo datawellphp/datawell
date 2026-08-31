@@ -10,6 +10,7 @@ use Datawell\Execution\Context;
 use Datawell\Fields\Concerns\HasGrains;
 use Datawell\Operators\Operator;
 use DateTimeInterface;
+use Illuminate\Contracts\Database\Query\Expression;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 
@@ -38,7 +39,7 @@ class DateTimeField extends Field
         return [Operator::On, Operator::Before, Operator::After, Operator::Between];
     }
 
-    protected function applyColumnCondition(EloquentBuilder|QueryBuilder $query, string $column, Operator $operator, mixed $value, Context $context): void
+    protected function applyColumnCondition(EloquentBuilder|QueryBuilder $query, string|Expression $column, Operator $operator, mixed $value, Context $context): void
     {
         if (in_array($operator, [Operator::IsEmpty, Operator::IsNotEmpty], true)) {
             parent::applyColumnCondition($query, $column, $operator, $value, $context);

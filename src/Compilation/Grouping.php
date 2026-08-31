@@ -14,6 +14,7 @@ use Datawell\Fields\RelationField;
 use Datawell\Query\AggregateSpec;
 use Datawell\Query\GroupSpec;
 use Datawell\Relations\RelationResolver;
+use Illuminate\Contracts\Database\Query\Expression;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 
@@ -57,20 +58,22 @@ class Grouping
     }
 
     /**
-     * Compile the grouped select; returns, per group, the column its null placement
-     * orders by (null for grains, which are never null-placed).
+     * Compile the grouped select. Alongside each group value `g<i>`, a null flag
+     * `gn<i>` (`<underlying> IS NULL`) is selected and grouped — it is functionally
+     * dependent on the group value, and being an output alias it can be ordered by on
+     * every driver, which is how the null bucket lands last (D53) even where the group
+     * itself is an alias the ORDER BY cannot decompose.
      *
      * @param  EloquentBuilder<covariant \Illuminate\Database\Eloquent\Model>|QueryBuilder  $query
      * @param  list<GroupSpec>  $groups
      * @param  list<AggregateSpec>  $aggregates
-     * @return list<string|null>
      */
-    public function compile(EloquentBuilder|QueryBuilder $query, array $groups, array $aggregates, Definition $definition, Context $context): array
+    public function compile(EloquentBuilder|QueryBuilder $query, array $groups, array $aggregates, Definition $definition, Context $context): void
     {
         $base = $query instanceof EloquentBuilder ? $query->getQuery() : $query;
+        $grammar = $query->getGrammar();
         $selects = [];
         $bindings = [];
-        $columns = [];
 
         foreach ($groups as $index => $group) {
             $field = $definition->field($group->key) ?? throw new UnsupportedException(sprintf('Group "%s" reached the compiler unvalidated.', $group->key));
@@ -82,8 +85,33 @@ class Grouping
                 [$idColumn, $labelColumn] = $this->relationColumns($query, $field, $context);
                 $selects[] = $idColumn.' as '.$alias;
                 $selects[] = $labelColumn.' as '.$alias.'_label';
-                $query->groupBy($idColumn, $labelColumn);
-                $columns[$index] = $idColumn;
+                $selects[] = $this->nullFlag($query, $idColumn, $index);
+                $query->groupBy($idColumn, $labelColumn, 'gn'.$index);
+
+                continue;
+            }
+
+            $aggregation = $field->getAggregation();
+
+            if ($aggregation !== null) {
+                // An aggregate field as a dimension: select its subselect under the alias
+                // and group by the alias (its bindings are select bindings, as for grains).
+                [$expression, $expressionBindings] = $context->relations()->aggregate($query, $aggregation);
+                $underlying = $expression;
+                $underlyingBindings = $expressionBindings;
+
+                if ($group->grain !== null) {
+                    if ($expressionBindings !== []) {
+                        throw new UnsupportedException(sprintf('Group "%s" cannot be bucketed by grain: its relation carries bound constraints, which a grain expression cannot repeat safely.', $group->key));
+                    }
+
+                    [$expression, $expressionBindings] = Raw::grain($query, $expression, $group->grain, $field->type() === 'dateTime' && $context->timezone !== 'UTC' ? $context->timezone : null);
+                }
+
+                $selects[] = $query->getConnection()->raw($expression->getValue($grammar).' as '.$grammar->wrap($alias)); // @phpstan-ignore argument.type (grammar-wrapped alias around a Raw expression)
+                $selects[] = $this->nullFlag($query, $underlying, $index);
+                $query->groupBy($alias, 'gn'.$index);
+                array_push($bindings, ...$expressionBindings, ...$underlyingBindings);
 
                 continue;
             }
@@ -92,13 +120,11 @@ class Grouping
 
             if ($group->grain === null) {
                 $selects[] = $column.' as '.$alias;
-                $query->groupBy($column);
-                $columns[$index] = $column;
+                $selects[] = $this->nullFlag($query, $column, $index);
+                $query->groupBy($column, 'gn'.$index);
 
                 continue;
             }
-
-            $columns[$index] = null;
 
             [$expression, $expressionBindings] = Raw::grain(
                 $query,
@@ -107,11 +133,12 @@ class Grouping
                 $field->type() === 'dateTime' && $context->timezone !== 'UTC' ? $context->timezone : null,
             );
 
-            $selects[] = $query->getConnection()->raw($expression->getValue($query->getGrammar()).' as '.$query->getGrammar()->wrap($alias)); // @phpstan-ignore argument.type (grammar-wrapped alias around a Raw expression)
+            $selects[] = $query->getConnection()->raw($expression->getValue($grammar).' as '.$grammar->wrap($alias)); // @phpstan-ignore argument.type (grammar-wrapped alias around a Raw expression)
+            $selects[] = $this->nullFlag($query, $column, $index);
             // Group by the alias: MySQL's ONLY_FULL_GROUP_BY cannot match a select
             // expression to a GROUP BY expression once a binding is involved, and
             // every supported driver accepts an output-column alias here.
-            $query->groupBy($alias);
+            $query->groupBy($alias, 'gn'.$index);
             array_push($bindings, ...$expressionBindings);
         }
 
@@ -126,7 +153,16 @@ class Grouping
             }
 
             $field = $definition->field((string) $aggregate->field) ?? throw new UnsupportedException(sprintf('Aggregate over "%s" reached the compiler unvalidated.', (string) $aggregate->field));
-            $selects[] = $query->getConnection()->raw(Raw::aggregate($query, $fn->value, $this->groupColumn($query, $field, $context))->getValue($query->getGrammar()).' as '.$query->getGrammar()->wrap($alias)); // @phpstan-ignore argument.type (grammar-wrapped alias around a Raw expression)
+            $aggregation = $field->getAggregation();
+            $measure = $this->groupColumn($query, $field, $context);
+
+            if ($aggregation !== null) {
+                // A measure over an aggregate field: the outer function wraps the subselect.
+                [$measure, $measureBindings] = $context->relations()->aggregate($query, $aggregation);
+                array_push($bindings, ...$measureBindings);
+            }
+
+            $selects[] = $query->getConnection()->raw(Raw::aggregate($query, $fn->value, $measure)->getValue($query->getGrammar()).' as '.$query->getGrammar()->wrap($alias)); // @phpstan-ignore argument.type (grammar-wrapped alias around a Raw expression)
         }
 
         $query->select($selects);
@@ -134,8 +170,19 @@ class Grouping
         if ($bindings !== []) {
             $base->addBinding($bindings, 'select');
         }
+    }
 
-        return array_values($columns);
+    /**
+     * `<underlying> IS NULL as gn<i>` — a group's null flag (its bindings, if any, are
+     * the caller's to place with the group's own).
+     *
+     * @param  EloquentBuilder<covariant \Illuminate\Database\Eloquent\Model>|QueryBuilder  $query
+     */
+    protected function nullFlag(EloquentBuilder|QueryBuilder $query, string|Expression $underlying, int $index): Expression
+    {
+        $grammar = $query->getGrammar();
+
+        return $query->getConnection()->raw(Raw::isNull($query, $underlying)->getValue($grammar).' as '.$grammar->wrap('gn'.$index)); // @phpstan-ignore argument.type (grammar-wrapped alias around a Raw expression)
     }
 
     /**
@@ -146,6 +193,10 @@ class Grouping
      */
     protected function groupColumn(EloquentBuilder|QueryBuilder $query, Field $field, Context $context): string
     {
+        if ($field->getAggregation() !== null) {
+            return $field->getKey(); // placeholder: aggregate fields compile through aggregate(), never by column
+        }
+
         $relations = $context->relations();
         $path = $relations->resolveField($query, $field)->path;
         $column = (string) $path->column;
@@ -181,18 +232,18 @@ class Grouping
 
     /**
      * Order buckets: by the first grain chronologically when there is one, else by the
-     * first aggregate descending (D39 facets), then by group value with the null bucket
-     * last (D53).
+     * first aggregate descending (D39 facets), then by group value — the null bucket
+     * last either way (D53).
      *
      * @param  EloquentBuilder<covariant \Illuminate\Database\Eloquent\Model>|QueryBuilder  $query
      * @param  list<GroupSpec>  $groups
      * @param  list<AggregateSpec>  $aggregates
-     * @param  list<string|null>  $columns  the group columns compile() returned
      */
-    public function order(EloquentBuilder|QueryBuilder $query, array $groups, array $aggregates, array $columns): void
+    public function order(EloquentBuilder|QueryBuilder $query, array $groups, array $aggregates): void
     {
         foreach ($groups as $index => $group) {
             if ($group->grain !== null) {
+                $query->orderBy('gn'.$index, 'asc');
                 $query->orderBy('g'.$index, 'asc');
 
                 return;
@@ -204,12 +255,7 @@ class Grouping
         }
 
         foreach (array_keys($groups) as $index) {
-            $column = $columns[$index] ?? null;
-
-            if ($column !== null) {
-                $query->orderBy(Raw::isNull($query, $column));
-            }
-
+            $query->orderBy('gn'.$index, 'asc');
             $query->orderBy('g'.$index, 'asc');
         }
     }
@@ -232,7 +278,7 @@ class Grouping
             $bucket[$group->key] = match (true) {
                 $group->grain !== null => self::grainRef($raw, $group->grain),
                 $field instanceof RelationField => self::relationRef($raw, data_get($row, 'g'.$index.'_label')),
-                $field !== null => $field->serialize(self::nest($field->getPath(), $raw), $context),
+                $field !== null => $field->serialize(self::nest($field->getAggregation() !== null ? $field->getKey() : $field->getPath(), $raw), $context),
                 default => $raw,
             };
         }

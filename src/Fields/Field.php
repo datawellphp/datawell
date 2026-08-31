@@ -13,7 +13,9 @@ use Datawell\Enums\Cardinality;
 use Datawell\Exceptions\UnsupportedException;
 use Datawell\Execution\Context;
 use Datawell\Operators\Operator;
+use Datawell\Relations\Aggregation;
 use Datawell\Relations\RelationResolver;
+use Illuminate\Contracts\Database\Query\Expression;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Query\Builder as QueryBuilder;
@@ -50,6 +52,9 @@ abstract class Field
 
     /** @var list<AggregateType> */
     protected array $aggregates = [];
+
+    /** Declared when this field is an aggregate over a relation (D55). */
+    protected ?Aggregation $aggregation = null;
 
     /**
      * Concrete types expose `::make()` — the one authoring style (D33) — each with
@@ -156,6 +161,53 @@ abstract class Field
         $this->aggregates = array_values($aggregates);
 
         return $this;
+    }
+
+    /**
+     * Make this field the count of a to-many relation (D55): `reminders_count` as a
+     * Number that sorts, filters and charts like any other.
+     */
+    public function countOf(string $relation): static
+    {
+        $this->aggregation = new Aggregation(AggregateType::Count, $relation);
+
+        return $this;
+    }
+
+    public function sumOf(string $relation, string $column): static
+    {
+        return $this->aggregateOf(AggregateType::Sum, $relation, $column);
+    }
+
+    public function avgOf(string $relation, string $column): static
+    {
+        return $this->aggregateOf(AggregateType::Avg, $relation, $column);
+    }
+
+    public function minOf(string $relation, string $column): static
+    {
+        return $this->aggregateOf(AggregateType::Min, $relation, $column);
+    }
+
+    public function maxOf(string $relation, string $column): static
+    {
+        return $this->aggregateOf(AggregateType::Max, $relation, $column);
+    }
+
+    /**
+     * Sum, avg, min and max of nothing are NULL: these fields are nullable by nature (D55).
+     */
+    protected function aggregateOf(AggregateType $fn, string $relation, string $column): static
+    {
+        $this->aggregation = new Aggregation($fn, $relation, $column);
+        $this->nullable = true;
+
+        return $this;
+    }
+
+    public function getAggregation(): ?Aggregation
+    {
+        return $this->aggregation;
     }
 
     public function isSortable(): bool
@@ -272,6 +324,15 @@ abstract class Field
     public function applyCondition(EloquentBuilder|QueryBuilder $query, Operator $operator, mixed $value, Context $context): void
     {
         $relations = $context->relations();
+
+        if ($this->aggregation !== null) {
+            [$expression, $bindings] = $relations->aggregate($query, $this->aggregation);
+            $query->addBinding($bindings, 'where');
+            $this->applyColumnCondition($query, $expression, $operator, $value, $context);
+
+            return;
+        }
+
         $resolved = $relations->resolveField($query, $this);
         $path = $resolved->path;
 
@@ -301,11 +362,12 @@ abstract class Field
 
     /**
      * The per-type compilation of an operator against one column — the hook concrete
-     * types override; the column is already qualified and resolved.
+     * types override; the column is already qualified and resolved (or is an aggregate
+     * field's subselect expression, whose bindings are already on the query).
      *
      * @param  EloquentBuilder<covariant Model>|QueryBuilder  $query
      */
-    protected function applyColumnCondition(EloquentBuilder|QueryBuilder $query, string $column, Operator $operator, mixed $value, Context $context): void
+    protected function applyColumnCondition(EloquentBuilder|QueryBuilder $query, string|Expression $column, Operator $operator, mixed $value, Context $context): void
     {
         match ($operator) {
             Operator::IsEmpty => $query->whereNull($column),

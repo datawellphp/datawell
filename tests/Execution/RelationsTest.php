@@ -40,7 +40,8 @@ it('renders the worked-example row: relation refs, many-values with a total, hid
         'requested_at' => '2026-08-10T09:00:00Z',
         'signed_at' => '2026-08-11T10:00:00Z',
         'tags' => ['items' => [['id' => 3, 'label' => 'Legal'], ['id' => 14, 'label' => 'Urgent']], 'total' => 2],
-        'reminders_count' => null,
+        'reminders_count' => 2,
+        'last_reminder_at' => '2026-08-22T09:00:00Z',
     ]);
 });
 

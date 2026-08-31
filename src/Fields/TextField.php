@@ -8,6 +8,7 @@ use Datawell\Compilation\Like;
 use Datawell\Compilation\Raw;
 use Datawell\Execution\Context;
 use Datawell\Operators\Operator;
+use Illuminate\Contracts\Database\Query\Expression;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 
@@ -31,7 +32,7 @@ class TextField extends Field
         return [Operator::Equals, Operator::NotEquals, Operator::Contains, Operator::StartsWith, Operator::EndsWith];
     }
 
-    protected function applyColumnCondition(EloquentBuilder|QueryBuilder $query, string $column, Operator $operator, mixed $value, Context $context): void
+    protected function applyColumnCondition(EloquentBuilder|QueryBuilder $query, string|Expression $column, Operator $operator, mixed $value, Context $context): void
     {
         $pattern = match ($operator) {
             Operator::Contains => Like::contains((string) $value),

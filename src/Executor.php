@@ -11,9 +11,11 @@ use Datawell\Compilation\Cursor;
 use Datawell\Compilation\Grouping;
 use Datawell\Compilation\Raw;
 use Datawell\Exceptions\SourceNotFoundException;
+use Datawell\Exceptions\UnsupportedException;
 use Datawell\Execution\Channel;
 use Datawell\Execution\Context;
 use Datawell\Fields\Field;
+use Datawell\Fields\RelationField;
 use Datawell\Filters\Filter;
 use Datawell\Query\FilterGroup;
 use Datawell\Query\QueryRequest;
@@ -32,8 +34,10 @@ use DateTimeInterface;
 use DateTimeZone;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\Config\Repository;
+use Illuminate\Contracts\Database\Query\Expression;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 
 /**
@@ -180,8 +184,8 @@ class Executor
      */
     protected function buckets(EloquentBuilder|QueryBuilder $query, QueryRequest $applied, Definition $definition, Context $context): BucketResult
     {
-        $columns = $this->grouping->compile($query, $applied->groupBy, $applied->aggregates, $definition, $context);
-        $this->grouping->order($query, $applied->groupBy, $applied->aggregates, $columns);
+        $this->grouping->compile($query, $applied->groupBy, $applied->aggregates, $definition, $context);
+        $this->grouping->order($query, $applied->groupBy, $applied->aggregates);
 
         $cap = $this->bucketCap();
         $query->limit($cap + 1);
@@ -248,6 +252,94 @@ class Executor
         $row = $query->where(RelationResolver::qualify($query, $keyName), '=', $id)->first();
 
         return $row === null ? null : $this->serializer->ref($row, $source, $keyName);
+    }
+
+    /**
+     * The remainder of a many-valued field beyond the row cap (D39, D56): the references
+     * of one entity's related items, paged in target-key order through the entity's own
+     * scoped query. Null when the entity is not in the caller's world; validation errors
+     * for an unknown field or a bad page as usual.
+     *
+     * @param  array<string, mixed>  $parameters
+     * @param  array<string, mixed>  $page
+     *
+     * @throws SourceNotFoundException
+     * @throws ValidationException
+     */
+    public function values(string $sourceKey, int|string $id, string $fieldKey, Authenticatable $user, array $parameters = [], array $page = [], Channel $channel = Channel::Direct): ?Result
+    {
+        $source = $this->registry->findFor($sourceKey, $user);
+        $context = $this->context($user, $channel);
+        $request = QueryRequest::fromArray(['source' => $sourceKey, 'parameters' => $parameters, 'page' => $page]);
+        $definition = $source->definition();
+
+        [$params, $errors] = $this->validator->validate($source, $request, $context);
+
+        $field = $definition->field($fieldKey);
+
+        if ($field === null || ! $field->isVisibleTo($user) || ! $field instanceof RelationField || ! $field->isMany()) {
+            $errors['field'] = [sprintf('Unknown field "%s".', $fieldKey)];
+        }
+
+        if ($errors !== []) {
+            throw ValidationException::withErrors($errors);
+        }
+
+        /** @var RelationField $field */
+        $query = $source->query($params);
+
+        if (! $query instanceof EloquentBuilder) {
+            throw new UnsupportedException(sprintf('values() over "%s" needs an Eloquent builder; the source query is a plain query builder.', $fieldKey));
+        }
+
+        $keyName = $this->keyNameOf($query, $definition->model());
+        $row = $query->where(RelationResolver::qualify($query, $keyName), '=', $id)->first();
+
+        if ($row === null) {
+            return null;
+        }
+
+        $relations = $context->relations();
+        $target = $relations->target($field, $row::class);
+        $relation = $row->{$relations->resolve($row::class, $field->getPath())->path->relation()}();
+
+        if (! $relation instanceof Relation) {
+            throw new UnsupportedException(sprintf('Field "%s" does not resolve to a relation on %s.', $fieldKey, $row::class));
+        }
+
+        $relatedKey = $relation->getRelated()->getQualifiedKeyName();
+        $items = $relation->getQuery()->orderBy($relatedKey, 'asc');
+
+        $size = $request->page->size ?? $this->defaultPageSize();
+        $total = null;
+
+        if ($request->page->isCursor()) {
+            if ($request->page->after !== null) {
+                $items->where($relatedKey, '>', Cursor::decode($request->page->after, 1)[0]);
+            }
+        } else {
+            if ($request->page->withTotal) {
+                $total = (clone $items->toBase())->getCountForPagination();
+            }
+
+            $items->offset(($request->page->number - 1) * $size);
+        }
+
+        /** @var list<Model> $rows */
+        $rows = $items->limit($size + 1)->get()->all();
+        $hasMore = count($rows) > $size;
+        $rows = array_slice($rows, 0, $size);
+        $last = end($rows);
+
+        $meta = $request->page->isCursor()
+            ? PageMeta::cursor($size, $hasMore, $hasMore && $last !== false ? Cursor::encode([$last->getKey()]) : null)
+            : PageMeta::offset($size, $request->page->number, $hasMore, $total);
+
+        return new Result(
+            array_map(fn (Model $item): array => $relations->ref($item, $target)->toArray(), $rows),
+            $meta,
+            $request,
+        );
     }
 
     public function context(Authenticatable $user, Channel $channel = Channel::Direct): Context
@@ -332,7 +424,7 @@ class Executor
     }
 
     /**
-     * @param  list<array{string, string, bool, string}>  $order
+     * @param  list<array{string|Expression, string, bool, string, list<mixed>}>  $order
      */
     protected function cursorFor(?object $row, array $order): ?string
     {

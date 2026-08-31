@@ -10,6 +10,7 @@ use Datawell\Actions\ServerAction;
 use Datawell\Attributes\Model;
 use Datawell\DataSource;
 use Datawell\Enums\ActionTarget;
+use Datawell\Enums\AggregateType;
 use Datawell\Enums\Grain;
 use Datawell\Fields\DateTimeField;
 use Datawell\Fields\EnumField;
@@ -107,7 +108,14 @@ class DocumentSignatures extends DataSource
                 ->options(Options::source('tags')),
 
             NumberField::make('reminders_count')
-                ->sortable()->filterable(),
+                ->countOf('reminders')
+                ->sortable()->filterable()->groupable()
+                ->aggregates(AggregateType::Sum, AggregateType::Avg),
+
+            DateTimeField::make('last_reminder_at')
+                ->maxOf('reminders', 'sent_at')
+                ->sortable()->filterable()
+                ->groupable(grains: [Grain::Day]),
         ];
     }
 

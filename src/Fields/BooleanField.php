@@ -6,6 +6,7 @@ namespace Datawell\Fields;
 
 use Datawell\Execution\Context;
 use Datawell\Operators\Operator;
+use Illuminate\Contracts\Database\Query\Expression;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 
@@ -29,7 +30,7 @@ class BooleanField extends Field
         return [Operator::Is];
     }
 
-    protected function applyColumnCondition(EloquentBuilder|QueryBuilder $query, string $column, Operator $operator, mixed $value, Context $context): void
+    protected function applyColumnCondition(EloquentBuilder|QueryBuilder $query, string|Expression $column, Operator $operator, mixed $value, Context $context): void
     {
         if ($operator === Operator::Is) {
             $query->where($column, '=', (bool) $value);

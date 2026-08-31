@@ -4,6 +4,10 @@ parameters:
         - src
         - tests/Fixtures
     tmpDir: build/phpstan
+    # The one targeted ignore (Compilation\Like::clause) only matches on Laravel
+    # versions whose Larastan stubs type raw SQL as literal-string; the CI matrix
+    # spans both, so an unmatched ignore must not fail the older side.
+    reportUnmatchedIgnoredErrors: false
     # Larastan boots a Testbench application in every PHPStan worker; concurrent
     # workers race on the skeleton's bootstrap cache (fatal on Windows, flaky
     # elsewhere). One process keeps analysis deterministic.

@@ -35,13 +35,15 @@ final class Raw
 
     /**
      * `<column> LIKE ? ESCAPE ?` — no driver-neutral builder API carries ESCAPE, and
-     * SQLite has no default escape character.
+     * SQLite has no default escape character. Contains semantics are case-insensitive
+     * everywhere (D16): MySQL and SQLite compare LIKE that way by default, Postgres needs ILIKE.
      *
      * @param  EloquentBuilder<covariant \Illuminate\Database\Eloquent\Model>|QueryBuilder  $query
      */
     public static function like(EloquentBuilder|QueryBuilder $query, string $column): Expression
     {
-        $sql = $query->getGrammar()->wrap($column).' LIKE ? ESCAPE ?';
+        $operator = self::driver($query) === 'pgsql' ? 'ILIKE' : 'LIKE';
+        $sql = $query->getGrammar()->wrap($column).' '.$operator.' ? ESCAPE ?';
 
         return $query->getConnection()->raw($sql); // @phpstan-ignore argument.type (grammar-wrapped identifier, values are bindings)
     }

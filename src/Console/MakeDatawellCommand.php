@@ -12,7 +12,7 @@ use Symfony\Component\Console\Input\InputOption;
 
 /**
  * Generates a data source with its key stamped literally into the class (D30) and,
- * when a model is given, the #[Model] attribute (D46).
+ * when a model is given, the #[Model] attribute (D46). Sources live under App\Datawell.
  */
 #[AsCommand(name: 'make:datawell')]
 class MakeDatawellCommand extends GeneratorCommand
@@ -23,19 +23,46 @@ class MakeDatawellCommand extends GeneratorCommand
 
     protected $type = 'Data source';
 
+    public function handle(): ?bool
+    {
+        $this->input->setArgument('name', $this->placeUnderDatawellNamespace($this->nameArgument()));
+
+        if (parent::handle() === false) {
+            return false;
+        }
+
+        $path = $this->getPath($this->qualifyClass($this->nameArgument()));
+
+        file_put_contents($path, $this->fillPlaceholders((string) file_get_contents($path)));
+
+        return null;
+    }
+
     protected function getStub(): string
     {
         return __DIR__.'/stubs/datawell.stub';
     }
 
-    protected function getDefaultNamespace($rootNamespace): string
+    protected function nameArgument(): string
     {
-        return $rootNamespace.'\Datawell';
+        $name = $this->argument('name');
+
+        return is_string($name) ? trim(str_replace('/', '\\', $name), '\\') : '';
     }
 
-    protected function buildClass($name): string
+    /**
+     * Unqualified names land in App\Datawell; a fully qualified name is honoured as given.
+     */
+    protected function placeUnderDatawellNamespace(string $name): string
     {
-        $class = class_basename($name);
+        $root = trim($this->rootNamespace(), '\\');
+
+        return Str::startsWith($name, $root.'\\') ? $name : $root.'\\Datawell\\'.$name;
+    }
+
+    protected function fillPlaceholders(string $contents): string
+    {
+        $class = class_basename($this->qualifyClass($this->nameArgument()));
         $model = $this->option('model');
         $model = is_string($model) && $model !== '' ? $this->qualifyModel($model) : null;
 
@@ -63,7 +90,7 @@ class MakeDatawellCommand extends GeneratorCommand
                 : sprintf('return %s::query();', class_basename($model)),
         ];
 
-        return Str::replace(array_keys($replacements), array_values($replacements), parent::buildClass($name));
+        return Str::replace(array_keys($replacements), array_values($replacements), $contents);
     }
 
     /**

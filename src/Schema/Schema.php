@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Datawell\Schema;
 
 use Illuminate\Contracts\Support\Arrayable;
-use Illuminate\Contracts\Support\Jsonable;
 use JsonSerializable;
 
 /**
@@ -13,7 +12,7 @@ use JsonSerializable;
  *
  * @implements Arrayable<string, mixed>
  */
-final class Schema implements Arrayable, Jsonable, JsonSerializable
+final class Schema implements Arrayable, JsonSerializable
 {
     /**
      * @param  array<string, mixed>  $data
@@ -36,7 +35,7 @@ final class Schema implements Arrayable, Jsonable, JsonSerializable
         return $this->data;
     }
 
-    public function toJson($options = 0): string
+    public function toJson(int $options = 0): string
     {
         return (string) json_encode($this->data, $options | JSON_THROW_ON_ERROR);
     }

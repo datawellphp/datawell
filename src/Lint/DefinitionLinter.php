@@ -11,7 +11,6 @@ use Datawell\DataSource;
 use Datawell\Definition;
 use Datawell\Enums\ActionTarget;
 use Datawell\Enums\OptionsStrategy;
-use Datawell\Fields\EnumField;
 use Datawell\Fields\Field;
 use Datawell\Fields\RelationField;
 use Datawell\Filters\Filter;
@@ -20,7 +19,6 @@ use Datawell\Parameter;
 use Datawell\Registry;
 use Datawell\Sorts\Sort;
 use Datawell\Support\Key;
-use UnitEnum;
 
 /**
  * The boot-time definition lint (D20, D30): type-level mistakes are unwritable (D33);
@@ -125,10 +123,6 @@ class DefinitionLinter
                     $key,
                 ));
             }
-        }
-
-        if ($field instanceof EnumField && ! is_subclass_of($field->getEnum(), UnitEnum::class)) {
-            $this->error($source, sprintf('field "%s" must be backed by a PHP enum; %s is not one', $key, $field->getEnum()));
         }
 
         if (method_exists($field, 'getOptions')) {

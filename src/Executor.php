@@ -6,10 +6,17 @@ namespace Datawell;
 
 use Carbon\CarbonImmutable;
 use Datawell\Actions\Action;
+use Datawell\Actions\ActionReport;
+use Datawell\Actions\ActionRequest;
+use Datawell\Actions\Runner;
+use Datawell\Actions\ServerAction;
+use Datawell\Actions\Target;
 use Datawell\Compilation\Compiler;
 use Datawell\Compilation\Cursor;
 use Datawell\Compilation\Grouping;
 use Datawell\Compilation\Raw;
+use Datawell\Enums\ActionTarget;
+use Datawell\Enums\Confirmation;
 use Datawell\Exceptions\SourceNotFoundException;
 use Datawell\Exceptions\UnsupportedException;
 use Datawell\Execution\Channel;
@@ -39,6 +46,7 @@ use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Database\Query\Builder as QueryBuilder;
+use Illuminate\Support\Collection;
 
 /**
  * The one enforcement point (D05). Every consumer — table, AI, charts, exports — hands
@@ -55,6 +63,7 @@ class Executor
         protected Grouping $grouping,
         protected Serializer $serializer,
         protected Repository $config,
+        protected Runner $runner,
     ) {
         $this->provenance->using(fn (ValueReference $reference, mixed $value, array $parameters, Context $context): bool => $this->resolvesProvenance($reference, $value, $parameters, $context));
     }
@@ -252,6 +261,197 @@ class Executor
         $row = $query->where(RelationResolver::qualify($query, $keyName), '=', $id)->first();
 
         return $row === null ? null : $this->serializer->ref($row, $source, $keyName);
+    }
+
+    /**
+     * The write side (D40-D44): validate, gate by channel and consent, resolve the
+     * target through the source's permission-scoped query, drop ineligible rows, run.
+     * Failed validation is a request-level error — reports describe only what executed.
+     *
+     * @param  ActionRequest|array<string, mixed>  $request
+     *
+     * @throws SourceNotFoundException
+     * @throws ValidationException
+     */
+    public function act(ActionRequest|array $request, Authenticatable $user, Channel $channel = Channel::Direct): ActionReport
+    {
+        $request = $request instanceof ActionRequest ? $request : ActionRequest::fromArray($request);
+        $source = $this->registry->findFor($request->source, $user);
+        $context = $this->context($user, $channel);
+        $definition = $source->definition();
+
+        // Gated and nonexistent actions are indistinguishable (D18, D37): not visible,
+        // or humanOnly on a delegated channel, reads as unknown.
+        $action = $this->actionsFor($definition, $context)[$request->action] ?? null;
+
+        if ($action === null) {
+            throw ValidationException::withErrors(['action' => [sprintf('Unknown action "%s".', $request->action)]]);
+        }
+
+        if (! $action instanceof ServerAction) {
+            throw ValidationException::withErrors(['action' => [sprintf('Action "%s" is a %s action and does not execute server-side.', $request->action, $action->kind())]]);
+        }
+
+        $this->enforceConsent($action, $request, $context);
+
+        [$params, $errors] = $this->validator->validate($source, new QueryRequest($request->source, $request->parameters), $context);
+
+        if ($errors !== []) {
+            throw ValidationException::withErrors($errors);
+        }
+
+        $declared = [];
+
+        foreach ($action->getParameters() as $parameter) {
+            $declared[$parameter->getKey()] = $parameter;
+        }
+
+        [$input, $inputErrors] = $this->validator->validateInput($declared, $request->input, $context);
+
+        if ($inputErrors !== []) {
+            throw ValidationException::withErrors($inputErrors);
+        }
+
+        $keyName = $this->keyNameOf($source->query($params), $definition->model());
+        [$rows, $targeted, $skipped, $skippedTruncated] = $this->resolveTarget($action, $request, $source, $definition, $params, $context, $keyName);
+
+        return $this->runner->run($action, $source, $rows, $input, $context, $keyName, $targeted, $skipped, $skippedTruncated);
+    }
+
+    /**
+     * Consent, verified mechanically on delegated channels (D37): a confirmation-requiring
+     * action needs an approval reference, and cannot run at all where no one can be asked.
+     */
+    protected function enforceConsent(ServerAction $action, ActionRequest $request, Context $context): void
+    {
+        if (! $context->channel->isDelegated() || $action->effectiveConfirmation() === Confirmation::Never) {
+            return;
+        }
+
+        if (! $context->channel->isInteractive()) {
+            throw ValidationException::withErrors(['action' => [sprintf('Action "%s" requires confirmation and cannot run on a non-interactive channel.', $action->getKey())]]);
+        }
+
+        if ($request->approval === null || trim($request->approval) === '') {
+            throw ValidationException::withErrors(['approval' => [sprintf('Action "%s" requires user approval on this channel; include the approval reference.', $action->getKey())]]);
+        }
+    }
+
+    /**
+     * Resolve a target through the scoped query (D40) and re-enforce per-row
+     * authorization (D43): out-of-scope ids skip as "Not found." — indistinguishable
+     * from nonexistent ones — and ineligible rows skip as "Not allowed.", never
+     * silently dropped or included.
+     *
+     * @return array{Collection<int, object>, int, list<array<string, mixed>>, bool}
+     */
+    protected function resolveTarget(ServerAction $action, ActionRequest $request, DataSource $source, Definition $definition, Params $params, Context $context, string $keyName): array
+    {
+        if ($action->isStandalone()) {
+            if ($request->target !== null) {
+                throw ValidationException::withErrors(['target' => [sprintf('Action "%s" is standalone and takes no target.', $action->getKey())]]);
+            }
+
+            return [new Collection, 0, [], false];
+        }
+
+        $target = $request->target ?? throw ValidationException::withErrors(['target' => [sprintf('Action "%s" needs a target.', $action->getKey())]]);
+        $skipped = [];
+
+        if ($target->isScope()) {
+            if (! $action->hasTarget(ActionTarget::QueryScope)) {
+                throw ValidationException::withErrors(['target' => [sprintf('Action "%s" does not accept a query target.', $action->getKey())]]);
+            }
+
+            $rows = $this->resolveScope($action, $target, $source, $definition, $params, $context, $keyName);
+        } else {
+            /** @var list<int|string> $ids */
+            $ids = $target->ids;
+
+            if (count($ids) > 1 && ! $action->hasTarget(ActionTarget::Many)) {
+                throw ValidationException::withErrors(['target.ids' => [sprintf('Action "%s" accepts one row at a time.', $action->getKey())]]);
+            }
+
+            if (! $action->hasTarget(ActionTarget::Single) && ! $action->hasTarget(ActionTarget::Many)) {
+                throw ValidationException::withErrors(['target.ids' => [sprintf('Action "%s" targets the matching query, not explicit ids.', $action->getKey())]]);
+            }
+
+            $query = $source->query($params);
+            $rows = $query->whereIn(RelationResolver::qualify($query, $keyName), $ids)->get()->values();
+            $foundKeys = $rows->map(static fn (object $row): mixed => data_get($row, $keyName))->all();
+
+            foreach ($ids as $id) {
+                if (! in_array($id, $foundKeys, false)) {
+                    $skipped[] = ['id' => $id, 'reason' => 'Not found.'];
+                }
+            }
+        }
+
+        $targeted = $rows->count() + count($skipped);
+        $eligible = [];
+
+        foreach ($rows as $row) {
+            if ($action->authorizes($context->user, $row)) {
+                $eligible[] = $row;
+
+                continue;
+            }
+
+            $skipped[] = $this->runner->entry($row, 'Not allowed.', $source, $keyName);
+        }
+
+        $max = $this->runner->maxFailures();
+
+        return [
+            new Collection($eligible),
+            $targeted,
+            array_slice($skipped, 0, $max),
+            count($skipped) > $max,
+        ];
+    }
+
+    /**
+     * "All rows matching this view" (D40): the target query's filters and search are
+     * validated against the per-user schema and compiled onto the scoped query — with
+     * declared filter defaults folded in, exactly as the read side runs them — then
+     * authorizeQuery narrows to eligible rows and `except` ids drop out.
+     *
+     * @return Collection<int, object>
+     */
+    protected function resolveScope(ServerAction $action, Target $target, DataSource $source, Definition $definition, Params $params, Context $context, string $keyName): Collection
+    {
+        /** @var QueryRequest $scope */
+        $scope = $target->query;
+
+        [, $errors] = $this->validator->validate($source, $scope, $context);
+
+        if ($errors !== []) {
+            throw ValidationException::withErrors($errors);
+        }
+
+        $user = $context->user;
+        $visibleFields = array_filter($definition->fields(), static fn (Field $field): bool => $field->isVisibleTo($user));
+        $visibleFilters = array_filter($definition->filters(), static fn (Filter $filter): bool => $filter->isVisibleTo($user));
+        $applied = $this->applied($scope, $definition, $visibleFilters);
+
+        $query = $source->query($params);
+        $this->compiler->filters($query, $applied->filters, $definition, $context);
+
+        if ($applied->search !== null && $applied->search !== '') {
+            $this->compiler->search($query, $applied->search, $visibleFields, $context);
+        }
+
+        $narrow = $action->getAuthorizeQuery();
+
+        if ($narrow !== null) {
+            $query = $narrow($query) ?? $query;
+        }
+
+        if ($target->except !== []) {
+            $query->whereNotIn(RelationResolver::qualify($query, $keyName), $target->except);
+        }
+
+        return $query->get()->values();
     }
 
     /**

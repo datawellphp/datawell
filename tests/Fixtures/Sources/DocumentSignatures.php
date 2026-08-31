@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Datawell\Tests\Fixtures\Sources;
 
+use Datawell\Actions\ActionContext;
 use Datawell\Actions\ClientAction;
 use Datawell\Actions\LinkAction;
 use Datawell\Actions\ServerAction;
@@ -22,10 +23,13 @@ use Datawell\Parameter;
 use Datawell\Params;
 use Datawell\Representation;
 use Datawell\Tests\Fixtures\Enums\SignatureStatus;
+use Datawell\Tests\Fixtures\Models\Reminder;
 use Datawell\Tests\Fixtures\Models\Signature;
+use Datawell\Tests\Fixtures\Support\MailboxRejectedException;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Query\Builder as QueryBuilder;
+use Illuminate\Support\Collection;
 
 /**
  * The worked example from docs/datasource-examples.md, ported as the first real source.
@@ -134,7 +138,38 @@ class DocumentSignatures extends DataSource
                     Parameter::make('message')->rules(['nullable', 'string', 'max:500']),
                 ])
                 ->can('remind')
-                ->handle(static fn (): null => null),
+                ->handle(static function (Collection $rows, Params $input, ActionContext $context): void {
+                    $sent = 0;
+
+                    foreach ($rows as $signature) {
+                        if ($signature->signer_id === null) {
+                            $context->fail($signature, 'No signer to remind.');
+
+                            continue;
+                        }
+
+                        if ($signature->signer?->email === 'cara@rival.com') {
+                            throw new MailboxRejectedException('Mailbox rejected the address');
+                        }
+
+                        Reminder::query()->create(['signature_id' => $signature->id, 'sent_at' => $context->now->format('Y-m-d H:i:s')]);
+                        $sent++;
+                    }
+
+                    $context->message(sprintf('Reminder sent to %d signer%s.', $sent, $sent === 1 ? '' : 's'));
+                }),
+
+            ServerAction::make('decline_stale')
+                ->targets(ActionTarget::Many, ActionTarget::QueryScope)
+                ->description('Decline pending signature requests that will not be signed.')
+                ->authorize(static fn (Authenticatable $user, mixed $signature): bool => $signature instanceof Signature && $signature->status === 'pending')
+                ->authorizeQuery(static fn (EloquentBuilder|QueryBuilder $query) => $query->where('status', 'pending'))
+                ->transactional()
+                ->handle(static function (Collection $rows, Params $input, ActionContext $context): void {
+                    foreach ($rows as $signature) {
+                        $signature->update(['status' => 'declined']);
+                    }
+                }),
 
             ServerAction::make('void_signature')
                 ->targets(ActionTarget::Single)

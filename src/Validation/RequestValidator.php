@@ -11,6 +11,7 @@ use Datawell\Enums\Grain;
 use Datawell\Execution\Context;
 use Datawell\Fields\Field;
 use Datawell\Filters\Filter;
+use Datawell\Parameter;
 use Datawell\Params;
 use Datawell\Query\Errors;
 use Datawell\Query\FilterCondition;
@@ -66,11 +67,33 @@ class RequestValidator
      */
     protected function validateParameters(DataSource $source, Definition $definition, QueryRequest $request, Context $context, Errors $errors): Params
     {
-        $declared = $definition->parameters();
+        return $this->validateParameterSet($definition->parameters(), $request->parameters, $context, $errors, 'parameters');
+    }
 
-        foreach (array_keys($request->parameters) as $key) {
+    /**
+     * Action input rides the same Parameter machinery (D37): rules, defaults, provenance.
+     *
+     * @param  array<string, Parameter>  $declared
+     * @param  array<string, mixed>  $values
+     * @return array{Params, array<string, list<string>>}
+     */
+    public function validateInput(array $declared, array $values, Context $context): array
+    {
+        $errors = new Errors;
+        $params = $this->validateParameterSet($declared, $values, $context, $errors, 'input');
+
+        return [$params, $errors->all()];
+    }
+
+    /**
+     * @param  array<string, Parameter>  $declared
+     * @param  array<string, mixed>  $given
+     */
+    protected function validateParameterSet(array $declared, array $given, Context $context, Errors $errors, string $path): Params
+    {
+        foreach (array_keys($given) as $key) {
             if (! isset($declared[$key])) {
-                $errors->add('parameters.'.$key, sprintf('Unknown parameter "%s".', $key));
+                $errors->add($path.'.'.$key, sprintf('Unknown %s "%s".', $path === 'input' ? 'input' : 'parameter', $key));
             }
         }
 
@@ -78,8 +101,8 @@ class RequestValidator
         $rules = [];
 
         foreach ($declared as $key => $parameter) {
-            if (array_key_exists($key, $request->parameters)) {
-                $values[$key] = $request->parameters[$key];
+            if (array_key_exists($key, $given)) {
+                $values[$key] = $given[$key];
             } elseif ($parameter->hasDefault()) {
                 $values[$key] = $parameter->getDefault();
             }
@@ -92,7 +115,7 @@ class RequestValidator
         if ($laravel->fails()) {
             foreach ($laravel->errors()->toArray() as $key => $messages) {
                 foreach ($messages as $message) {
-                    $errors->add('parameters.'.$key, $message);
+                    $errors->add($path.'.'.$key, $message);
                 }
             }
 
@@ -107,7 +130,7 @@ class RequestValidator
             }
 
             if (! $this->provenance->exists($reference, $values[$key], $values, $context)) {
-                $errors->add('parameters.'.$key, sprintf('Invalid %s.', $key));
+                $errors->add($path.'.'.$key, sprintf('Invalid %s.', $key));
             }
         }
 

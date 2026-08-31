@@ -64,6 +64,28 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Actions
+    |--------------------------------------------------------------------------
+    |
+    | The write side (D40-D45). `chunk` rows per handler call unless the action
+    | overrides or declares wholeSet; targets larger than `sync_limit` (or any
+    | action declared queued) dispatch as a bus batch. Failure and skip lists
+    | on reports are capped at `max_failures` with an explicit truncated flag.
+    | `record` persists runs: 'queued' (tier 1) or 'always' (tier 2 audit
+    | trail); rows prune after `retention_days`.
+    |
+    */
+
+    'actions' => [
+        'chunk' => 100,
+        'sync_limit' => 100,
+        'max_failures' => 50,
+        'record' => 'queued',
+        'retention_days' => 30,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Many-values
     |--------------------------------------------------------------------------
     |

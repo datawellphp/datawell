@@ -12,7 +12,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 /**
  * @property int $id
  * @property int $document_id
- * @property int $signer_id
+ * @property int|null $signer_id
+ * @property string $status
  */
 class Signature extends Model
 {

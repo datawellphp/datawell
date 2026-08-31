@@ -263,6 +263,18 @@
             "description": "Email a reminder to the signer of this signature request."
         },
         {
+            "key": "decline_stale",
+            "label": "Decline Stale",
+            "kind": "server",
+            "targets": [
+                "many",
+                "queryScope"
+            ],
+            "destructive": false,
+            "confirmation": "always",
+            "description": "Decline pending signature requests that will not be signed."
+        },
+        {
             "key": "void_signature",
             "label": "Void Signature",
             "kind": "server",

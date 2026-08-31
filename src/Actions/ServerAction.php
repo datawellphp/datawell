@@ -23,6 +23,13 @@ class ServerAction extends Action
 
     protected ?int $chunkSize = null;
 
+    protected bool $transactional = false;
+
+    protected bool $wholeSet = false;
+
+    /** @var (Closure(mixed): mixed)|null */
+    protected ?Closure $authorizeQuery = null;
+
     /** @var class-string|Closure|null */
     protected string|Closure|null $handler = null;
 
@@ -71,6 +78,60 @@ class ServerAction extends Action
         $this->handler = $handler;
 
         return $this;
+    }
+
+    /**
+     * Wrap each chunk in a database transaction (D41 opt-in). Documented as covering
+     * database state only — a rollback cannot unsend an email (D44).
+     */
+    public function transactional(bool $transactional = true): static
+    {
+        $this->transactional = $transactional;
+
+        return $this;
+    }
+
+    /**
+     * Skip chunking: the handler receives the whole resolved set in one call —
+     * the "I can do this in one pass" escape hatch (D41).
+     */
+    public function wholeSet(bool $wholeSet = true): static
+    {
+        $this->wholeSet = $wholeSet;
+
+        return $this;
+    }
+
+    /**
+     * Compose per-row eligibility into select-all resolution (D43): receives the scoped
+     * query, returns it narrowed to eligible rows, so queryScope counts are accurate and
+     * ineligible rows never load. authorize(user, row) is still re-checked per row.
+     *
+     * @param  Closure(mixed): mixed  $authorizeQuery
+     */
+    public function authorizeQuery(Closure $authorizeQuery): static
+    {
+        $this->authorizeQuery = $authorizeQuery;
+
+        return $this;
+    }
+
+    public function isTransactional(): bool
+    {
+        return $this->transactional;
+    }
+
+    public function isWholeSet(): bool
+    {
+        return $this->wholeSet;
+    }
+
+    /**
+     * @return (Closure(mixed): mixed)|null
+     */
+    public function getAuthorizeQuery(): ?Closure
+    {
+        return $this->authorizeQuery;
     }
 
     /**

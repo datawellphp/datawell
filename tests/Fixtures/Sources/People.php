@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Datawell\Tests\Fixtures\Sources;
 
+use Datawell\Actions\ActionContext;
 use Datawell\Actions\LinkAction;
 use Datawell\Actions\ServerAction;
 use Datawell\Attributes\Model;
@@ -95,6 +96,11 @@ class People extends DataSource
                 ->authorize(fn (Authenticatable $actor, User $row): bool => $row->role !== Role::Admin->value)
                 ->handle(static fn (): null => null),
             ServerAction::make('purge')->destructive()->humanOnly()->description('Erase this person.')->handle(static fn (): null => null),
+            ServerAction::make('refresh_directory')->targets(ActionTarget::Standalone)
+                ->description('Rebuild the cached people directory.')
+                ->handle(static function ($rows, $input, ActionContext $context): void {
+                    $context->message('Directory refresh scheduled.');
+                }),
         ];
     }
 }

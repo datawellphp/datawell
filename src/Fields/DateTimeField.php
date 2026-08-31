@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace Datawell\Fields;
 
-use Datawell\Exceptions\UnsupportedException;
+use Carbon\CarbonImmutable;
+use Datawell\Compilation\Dates;
 use Datawell\Execution\Context;
 use Datawell\Fields\Concerns\HasGrains;
 use Datawell\Operators\Operator;
+use DateTimeInterface;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 
@@ -44,6 +46,19 @@ class DateTimeField extends Field
             return;
         }
 
-        throw new UnsupportedException(sprintf('Date compilation for field "%s" lands with the timezone slice.', $this->getKey()));
+        foreach (Dates::comparisons($operator, $value, $context, instant: true) as [$comparison, $boundary]) {
+            $query->where($this->getPath(), $comparison, $boundary);
+        }
+    }
+
+    public function serialize(object $row, Context $context): mixed
+    {
+        $value = $this->valueOf($row);
+
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return CarbonImmutable::parse($value instanceof DateTimeInterface ? $value : (string) $value, 'UTC')->setTimezone('UTC')->format('Y-m-d\TH:i:s\Z');
     }
 }

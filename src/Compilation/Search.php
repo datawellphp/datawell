@@ -38,7 +38,7 @@ final class Search
         foreach ($terms as $term) {
             $query->where(static function (EloquentBuilder|QueryBuilder $group) use ($fields, $term): void {
                 foreach ($fields as $field) {
-                    $group->whereRaw(Like::clause($group, $field->getPath()), [Like::contains($term), Like::ESCAPE], 'or');
+                    $group->whereRaw(Raw::like($group, $field->getPath()), [Like::contains($term), Raw::ESCAPE], 'or');
                 }
             });
         }

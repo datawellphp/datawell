@@ -94,7 +94,7 @@ class Compiler
      *
      * @param  EloquentBuilder<covariant Model>|QueryBuilder  $query
      * @param  list<SortSpec>  $sorts
-     * @return list<array{string, string}> column and direction, ending with the key
+     * @return list<array{string, string, bool}> column, direction and nullability, ending with the key
      */
     public function sorts(EloquentBuilder|QueryBuilder $query, array $sorts, Definition $definition, string $keyName): array
     {
@@ -116,34 +116,54 @@ class Compiler
                 throw new UnsupportedException(sprintf('Sort "%s" is relation-backed; relation sorting lands in Phase 3.', $spec->key));
             }
 
+            if ($field->isNullable()) {
+                $query->orderBy(Raw::isNull($query, $field->getPath()));
+            }
+
             $query->orderBy($field->getPath(), $spec->direction);
-            $order[] = [$field->getPath(), $spec->direction];
+            $order[] = [$field->getPath(), $spec->direction, $field->isNullable()];
         }
 
         $query->orderBy($keyName, 'asc');
-        $order[] = [$keyName, 'asc'];
+        $order[] = [$keyName, 'asc', false];
 
         return $order;
     }
 
     /**
      * Keyset predicate for "rows after the cursor" over the effective ordering:
-     * (a > x) OR (a = x AND b > y) OR (a = x AND b = y AND pk > z).
+     * (a > x) OR (a = x AND b > y) OR (a = x AND b = y AND pk > z) — with nulls last
+     * on nullable columns (D53): a non-null cursor value is followed by greater values
+     * and then by nulls; a null cursor value is followed only by other nulls.
      *
      * @param  EloquentBuilder<covariant Model>|QueryBuilder  $query
-     * @param  list<array{string, string}>  $order
+     * @param  list<array{string, string, bool}>  $order
      * @param  list<mixed>  $values
      */
     public function after(EloquentBuilder|QueryBuilder $query, array $order, array $values): void
     {
         $query->where(static function (EloquentBuilder|QueryBuilder $outer) use ($order, $values): void {
-            foreach ($order as $depth => [$column, $direction]) {
-                $outer->orWhere(static function (EloquentBuilder|QueryBuilder $branch) use ($order, $values, $depth, $column, $direction): void {
+            foreach ($order as $depth => [$column, $direction, $nullable]) {
+                if ($values[$depth] === null) {
+                    continue; // nothing sorts after a null at this level; deeper levels tie-break within the nulls
+                }
+
+                $outer->orWhere(static function (EloquentBuilder|QueryBuilder $branch) use ($order, $values, $depth, $column, $direction, $nullable): void {
                     for ($i = 0; $i < $depth; $i++) {
-                        $branch->where($order[$i][0], '=', $values[$i]);
+                        $values[$i] === null
+                            ? $branch->whereNull($order[$i][0])
+                            : $branch->where($order[$i][0], '=', $values[$i]);
                     }
 
-                    $branch->where($column, $direction === 'desc' ? '<' : '>', $values[$depth]);
+                    $operator = $direction === 'desc' ? '<' : '>';
+
+                    if ($nullable) {
+                        $branch->where(static function (EloquentBuilder|QueryBuilder $level) use ($column, $operator, $values, $depth): void {
+                            $level->where($column, $operator, $values[$depth])->orWhereNull($column);
+                        });
+                    } else {
+                        $branch->where($column, $operator, $values[$depth]);
+                    }
                 });
             }
         });

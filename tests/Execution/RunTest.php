@@ -38,6 +38,8 @@ it('runs the resting request: scoped rows, defaulted filter, default sort, self-
         'age' => 41,
         'active' => true,
         'notes' => 'Founder',
+        'joined_on' => '2026-08-18',
+        'last_seen_at' => '2026-08-18T03:30:00Z',
     ]);
 
     $ben = $result['rows'][1];

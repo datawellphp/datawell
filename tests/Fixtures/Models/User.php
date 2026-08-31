@@ -16,6 +16,8 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
  * @property int|null $age
  * @property bool $active
  * @property string|null $notes
+ * @property string|null $joined_on
+ * @property string|null $last_seen_at
  * @property string|null $timezone
  * @property list<string> $abilities
  */

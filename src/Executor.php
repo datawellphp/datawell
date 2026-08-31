@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Datawell;
 
+use Carbon\CarbonImmutable;
 use Datawell\Actions\Action;
 use Datawell\Compilation\Compiler;
 use Datawell\Compilation\Cursor;
@@ -23,7 +24,7 @@ use Datawell\Validation\ProvenanceResolver;
 use Datawell\Validation\RequestValidator;
 use Datawell\Validation\ValidationException;
 use Datawell\Validation\ValidationReport;
-use DateTimeImmutable;
+use DateTimeInterface;
 use DateTimeZone;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\Config\Repository;
@@ -175,7 +176,7 @@ class Executor
     {
         $timezone = $this->timezones->resolve($user);
 
-        return new Context($user, $channel, $timezone, new DateTimeImmutable('now', new DateTimeZone($timezone)));
+        return new Context($user, $channel, $timezone, CarbonImmutable::now(new DateTimeZone($timezone)));
     }
 
     /**
@@ -246,7 +247,7 @@ class Executor
     }
 
     /**
-     * @param  list<array{string, string}>  $order
+     * @param  list<array{string, string, bool}>  $order
      */
     protected function cursorFor(?object $row, array $order): ?string
     {
@@ -254,7 +255,13 @@ class Executor
             return null;
         }
 
-        return Cursor::encode(array_map(static fn (array $sort): mixed => data_get($row, $sort[0]), $order));
+        return Cursor::encode(array_map(static function (array $sort) use ($row): mixed {
+            $value = data_get($row, $sort[0]);
+
+            return $value instanceof DateTimeInterface
+                ? CarbonImmutable::instance($value)->setTimezone('UTC')->format('Y-m-d H:i:s')
+                : $value;
+        }, $order));
     }
 
     /**

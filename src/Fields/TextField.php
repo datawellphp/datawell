@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Datawell\Fields;
 
 use Datawell\Compilation\Like;
+use Datawell\Compilation\Raw;
 use Datawell\Execution\Context;
 use Datawell\Operators\Operator;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
@@ -45,7 +46,7 @@ class TextField extends Field
             return;
         }
 
-        $query->whereRaw(Like::clause($query, $this->getPath()), [$pattern, Like::ESCAPE]);
+        $query->whereRaw(Raw::like($query, $this->getPath()), [$pattern, Raw::ESCAPE]);
     }
 
     public function castValue(mixed $value): mixed

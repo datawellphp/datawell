@@ -9,7 +9,10 @@ use Datawell\Actions\ServerAction;
 use Datawell\Attributes\Model;
 use Datawell\DataSource;
 use Datawell\Enums\ActionTarget;
+use Datawell\Enums\Grain;
 use Datawell\Fields\BooleanField;
+use Datawell\Fields\DateField;
+use Datawell\Fields\DateTimeField;
 use Datawell\Fields\EnumField;
 use Datawell\Fields\NumberField;
 use Datawell\Fields\TextField;
@@ -58,6 +61,10 @@ class People extends DataSource
             NumberField::make('age')->sortable()->filterable()->nullable(),
             BooleanField::make('active')->filterable(),
             TextField::make('notes')->nullable()->filterable(),
+            DateField::make('joined_on')->sortable()->filterable()->nullable()
+                ->groupable(grains: [Grain::Month, Grain::Year]),
+            DateTimeField::make('last_seen_at')->sortable()->filterable()->nullable()
+                ->groupable(grains: [Grain::Day, Grain::Week, Grain::Month]),
         ];
     }
 

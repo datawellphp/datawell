@@ -1,0 +1,251 @@
+{
+    "source": {
+        "key": "document-signatures",
+        "name": "Document signatures",
+        "description": "Signature requests attached to a single document: who was asked to sign, current status, when they were asked and when they signed.",
+        "timezone": "America/New_York",
+        "representation": {
+            "id": "id",
+            "label": "signer.name"
+        }
+    },
+    "parameters": [
+        {
+            "key": "document_id",
+            "label": "Document Id",
+            "type": "relation",
+            "required": true,
+            "rules": [
+                "integer"
+            ],
+            "from": {
+                "source": "documents"
+            }
+        }
+    ],
+    "fields": [
+        {
+            "key": "signer",
+            "label": "Signer",
+            "type": "relation",
+            "cardinality": "single",
+            "filterable": true,
+            "searchable": true,
+            "options": {
+                "strategy": "selfFacet"
+            }
+        },
+        {
+            "key": "status",
+            "label": "Status",
+            "type": "enum",
+            "cardinality": "single",
+            "filterable": true,
+            "groupable": true,
+            "options": {
+                "strategy": "inline",
+                "values": [
+                    {
+                        "id": "pending",
+                        "label": "Pending"
+                    },
+                    {
+                        "id": "signed",
+                        "label": "Signed"
+                    },
+                    {
+                        "id": "declined",
+                        "label": "Declined"
+                    }
+                ]
+            }
+        },
+        {
+            "key": "requested_at",
+            "label": "Requested At",
+            "type": "dateTime",
+            "cardinality": "single",
+            "sortable": true,
+            "filterable": true,
+            "groupable": true,
+            "grains": [
+                "day",
+                "week",
+                "month"
+            ]
+        },
+        {
+            "key": "signed_at",
+            "label": "Date signed",
+            "type": "dateTime",
+            "cardinality": "single",
+            "sortable": true,
+            "filterable": true,
+            "nullable": true
+        },
+        {
+            "key": "tags",
+            "label": "Tags",
+            "type": "relation",
+            "cardinality": "many",
+            "filterable": true,
+            "options": {
+                "strategy": "source",
+                "source": "tags"
+            }
+        },
+        {
+            "key": "reminders_count",
+            "label": "Reminders Count",
+            "type": "number",
+            "cardinality": "single",
+            "sortable": true,
+            "filterable": true
+        }
+    ],
+    "filters": [
+        {
+            "key": "signer",
+            "label": "Signer",
+            "type": "relation",
+            "operators": [
+                "in",
+                "notIn"
+            ]
+        },
+        {
+            "key": "status",
+            "label": "Status",
+            "type": "enum",
+            "operators": [
+                "in",
+                "notIn"
+            ]
+        },
+        {
+            "key": "requested_at",
+            "label": "Requested At",
+            "type": "dateTime",
+            "operators": [
+                "on",
+                "before",
+                "after",
+                "between"
+            ]
+        },
+        {
+            "key": "signed_at",
+            "label": "Date signed",
+            "type": "dateTime",
+            "operators": [
+                "on",
+                "before",
+                "after",
+                "between",
+                "isEmpty",
+                "isNotEmpty"
+            ]
+        },
+        {
+            "key": "tags",
+            "label": "Tags",
+            "type": "relation",
+            "operators": [
+                "hasAny",
+                "hasAll",
+                "hasNone",
+                "isEmpty",
+                "isNotEmpty"
+            ]
+        },
+        {
+            "key": "reminders_count",
+            "label": "Reminders Count",
+            "type": "number",
+            "operators": [
+                "equals",
+                "notEquals",
+                "gt",
+                "gte",
+                "lt",
+                "lte",
+                "between"
+            ]
+        }
+    ],
+    "sorts": [
+        {
+            "key": "requested_at",
+            "label": "Requested At"
+        },
+        {
+            "key": "signed_at",
+            "label": "Date signed"
+        },
+        {
+            "key": "reminders_count",
+            "label": "Reminders Count"
+        }
+    ],
+    "defaultSort": [
+        {
+            "key": "requested_at",
+            "direction": "desc"
+        }
+    ],
+    "actions": [
+        {
+            "key": "send_reminder",
+            "label": "Send Reminder",
+            "kind": "server",
+            "targets": [
+                "single",
+                "many"
+            ],
+            "destructive": false,
+            "confirmation": "whenDelegated",
+            "parameters": [
+                {
+                    "key": "message",
+                    "label": "Message",
+                    "type": "text",
+                    "required": false,
+                    "rules": [
+                        "nullable",
+                        "string",
+                        "max:500"
+                    ]
+                }
+            ],
+            "description": "Email a reminder to the signer of this signature request."
+        },
+        {
+            "key": "void_signature",
+            "label": "Void Signature",
+            "kind": "server",
+            "targets": [
+                "single"
+            ],
+            "destructive": true,
+            "confirmation": "always",
+            "humanOnly": true,
+            "description": "Void this signature request. Cannot be undone."
+        },
+        {
+            "key": "edit",
+            "label": "Edit",
+            "kind": "link",
+            "targets": [
+                "single"
+            ]
+        },
+        {
+            "key": "preview",
+            "label": "Preview",
+            "kind": "client",
+            "targets": [
+                "single"
+            ]
+        }
+    ]
+}

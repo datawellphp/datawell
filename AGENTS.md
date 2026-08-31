@@ -36,3 +36,7 @@ The design pack is the project's memory. It lives in the parent workspace at `..
 - `package-release`: use when preparing changelog, release notes, tags, or GitHub release workflow changes.
 - `package-compatibility`: use when reviewing code, dependencies, or CI against the PHP and Laravel support matrix.
 - `package-generate-skill`: use when updating the bundled Boost skill from the package implementation, README, and examples.
+
+## Known Gotchas
+
+- If `composer analyse` fails with `Undefined constant "Larastan\Larastan\LARAVEL_VERSION"`, Larastan's bootstrap (which defines that constant) was skipped on a cached load path — a known Larastan quirk (larastan/larastan#1664), intermittent here. Run `vendor/bin/phpstan clear-result-cache` (and `composer run prepare` if the Testbench manifest is missing) and retry; the package code is not at fault.

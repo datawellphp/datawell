@@ -1,0 +1,148 @@
+{
+    "source": {
+        "key": "documents",
+        "name": "Documents",
+        "description": "Documents the user can see: their own and those shared with them.",
+        "timezone": "America/New_York",
+        "representation": {
+            "id": "id",
+            "label": "title"
+        }
+    },
+    "parameters": [],
+    "fields": [
+        {
+            "key": "title",
+            "label": "Title",
+            "type": "text",
+            "cardinality": "single",
+            "sortable": true,
+            "filterable": true,
+            "searchable": true
+        },
+        {
+            "key": "owner",
+            "label": "Owner",
+            "type": "relation",
+            "cardinality": "single",
+            "filterable": true,
+            "options": {
+                "strategy": "selfFacet"
+            }
+        },
+        {
+            "key": "signatures_count",
+            "label": "Signatures Count",
+            "type": "number",
+            "cardinality": "single",
+            "sortable": true,
+            "filterable": true
+        },
+        {
+            "key": "created_at",
+            "label": "Created At",
+            "type": "dateTime",
+            "cardinality": "single",
+            "sortable": true,
+            "filterable": true
+        },
+        {
+            "key": "archived_at",
+            "label": "Archived At",
+            "type": "dateTime",
+            "cardinality": "single",
+            "filterable": true,
+            "nullable": true
+        }
+    ],
+    "filters": [
+        {
+            "key": "title",
+            "label": "Title",
+            "type": "text",
+            "operators": [
+                "equals",
+                "notEquals",
+                "contains",
+                "startsWith",
+                "endsWith"
+            ]
+        },
+        {
+            "key": "owner",
+            "label": "Owner",
+            "type": "relation",
+            "operators": [
+                "in",
+                "notIn"
+            ]
+        },
+        {
+            "key": "signatures_count",
+            "label": "Signatures Count",
+            "type": "number",
+            "operators": [
+                "equals",
+                "notEquals",
+                "gt",
+                "gte",
+                "lt",
+                "lte",
+                "between"
+            ]
+        },
+        {
+            "key": "created_at",
+            "label": "Created At",
+            "type": "dateTime",
+            "operators": [
+                "on",
+                "before",
+                "after",
+                "between"
+            ]
+        },
+        {
+            "key": "archived_at",
+            "label": "Archived At",
+            "type": "dateTime",
+            "operators": [
+                "isEmpty",
+                "isNotEmpty"
+            ],
+            "default": {
+                "operator": "isEmpty"
+            }
+        }
+    ],
+    "sorts": [
+        {
+            "key": "title",
+            "label": "Title"
+        },
+        {
+            "key": "signatures_count",
+            "label": "Signatures Count"
+        },
+        {
+            "key": "created_at",
+            "label": "Created At"
+        }
+    ],
+    "defaultSort": [
+        {
+            "key": "created_at",
+            "direction": "desc"
+        }
+    ],
+    "actions": [
+        {
+            "key": "open",
+            "label": "Open",
+            "kind": "link",
+            "targets": [
+                "single"
+            ]
+        }
+    ]
+}

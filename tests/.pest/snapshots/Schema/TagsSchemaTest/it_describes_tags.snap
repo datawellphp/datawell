@@ -1,0 +1,46 @@
+{
+    "source": {
+        "key": "tags",
+        "name": "Tags",
+        "description": "Labels that can be attached to signature requests.",
+        "timezone": "America/New_York",
+        "representation": {
+            "id": "id",
+            "label": "name"
+        }
+    },
+    "parameters": [],
+    "fields": [
+        {
+            "key": "name",
+            "label": "Name",
+            "type": "text",
+            "cardinality": "single",
+            "sortable": true,
+            "filterable": true,
+            "searchable": true
+        }
+    ],
+    "filters": [
+        {
+            "key": "name",
+            "label": "Name",
+            "type": "text",
+            "operators": [
+                "equals",
+                "notEquals",
+                "contains",
+                "startsWith",
+                "endsWith"
+            ]
+        }
+    ],
+    "sorts": [
+        {
+            "key": "name",
+            "label": "Name"
+        }
+    ],
+    "defaultSort": [],
+    "actions": []
+}

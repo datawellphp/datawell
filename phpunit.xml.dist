@@ -25,6 +25,13 @@
         <testsuite name="Unit">
             <directory>tests/Unit</directory>
         </testsuite>
+        <testsuite name="Contract">
+            <directory>tests/Schema</directory>
+            <directory>tests/Security</directory>
+            <directory>tests/Lint</directory>
+            <directory>tests/Registry</directory>
+            <directory>tests/Console</directory>
+        </testsuite>
     </testsuites>
     <source>
         <include>

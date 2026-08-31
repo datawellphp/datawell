@@ -7,8 +7,11 @@ namespace Datawell\Schema;
 use Datawell\Actions\Action;
 use Datawell\DataSource;
 use Datawell\Fields\Field;
+use Datawell\Fields\RelationField;
 use Datawell\Filters\Filter;
 use Datawell\Parameter;
+use Datawell\Registry;
+use Datawell\Relations\RelationResolver;
 use Datawell\Sorts\Sort;
 use Datawell\Timezone\TimezoneResolver;
 use Illuminate\Contracts\Auth\Authenticatable;
@@ -20,13 +23,15 @@ use Illuminate\Database\Eloquent\Model;
  */
 class Describer
 {
-    public function __construct(protected TimezoneResolver $timezones) {}
+    public function __construct(protected TimezoneResolver $timezones, protected Registry $registry) {}
 
     public function describe(DataSource $source, Authenticatable $user): Schema
     {
         $definition = $source->definition();
         $visible = static fn (Field|Filter|Sort|Action $item): bool => $item->isVisibleTo($user);
         $sorts = array_filter($definition->sorts(), $visible);
+        $model = $definition->model();
+        $relations = new RelationResolver($this->registry);
 
         return new Schema([
             'source' => [
@@ -40,7 +45,12 @@ class Describer
                 static fn (Parameter $parameter): array => $parameter->describe(),
                 $definition->parameters(),
             )),
-            'fields' => $this->describeAll(array_filter($definition->fields(), $visible)),
+            'fields' => array_values(array_map(
+                static fn (Field $field): array => $field instanceof RelationField
+                    ? $field->describeWith($relations->targetKey($field, $model))
+                    : $field->describe(),
+                array_filter($definition->fields(), $visible),
+            )),
             'filters' => $this->describeAll(array_filter($definition->filters(), $visible)),
             'sorts' => $this->describeAll($sorts),
             'defaultSort' => $this->defaultSort($source, array_keys($sorts)),

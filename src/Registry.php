@@ -8,6 +8,7 @@ use Datawell\Exceptions\DefinitionException;
 use Datawell\Exceptions\SourceNotFoundException;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\Container\Container;
+use Illuminate\Database\Eloquent\Model;
 
 /**
  * The front door for discovery (D02, D18): sources by key, class references resolved
@@ -91,6 +92,21 @@ class Registry
         return array_values(array_filter(
             $this->sources,
             static fn (DataSource $source): bool => $source->visible($user),
+        ));
+    }
+
+    /**
+     * The sources that declare a given model (D46) — how a relation field finds its
+     * target when it does not name one (D54).
+     *
+     * @param  class-string<Model>  $model
+     * @return list<DataSource>
+     */
+    public function withModel(string $model): array
+    {
+        return array_values(array_filter(
+            $this->sources,
+            static fn (DataSource $source): bool => $source->model() === $model,
         ));
     }
 

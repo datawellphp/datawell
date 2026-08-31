@@ -17,6 +17,7 @@ use Datawell\Fields\Field;
 use Datawell\Filters\Filter;
 use Datawell\Query\FilterGroup;
 use Datawell\Query\QueryRequest;
+use Datawell\Relations\RelationResolver;
 use Datawell\Result\BucketResult;
 use Datawell\Result\EntityRef;
 use Datawell\Result\PageMeta;
@@ -145,14 +146,19 @@ class Executor
 
         $query->limit($size + 1);
 
+        $fields = $applied->select === null
+            ? $visibleFields
+            : array_intersect_key($visibleFields, array_flip($applied->select));
+
+        if ($query instanceof EloquentBuilder) {
+            $context->relations()->load($query, $fields);
+        }
+
         /** @var list<object> $rows */
         $rows = $query->get()->all();
         $hasMore = count($rows) > $size;
         $rows = array_slice($rows, 0, $size);
 
-        $fields = $applied->select === null
-            ? $visibleFields
-            : array_intersect_key($visibleFields, array_flip($applied->select));
         $actions = $this->actionsFor($definition, $context);
 
         $serialized = array_map(
@@ -248,7 +254,13 @@ class Executor
     {
         $timezone = $this->timezones->resolve($user);
 
-        return new Context($user, $channel, $timezone, CarbonImmutable::now(new DateTimeZone($timezone)));
+        return new Context(
+            $user,
+            $channel,
+            $timezone,
+            CarbonImmutable::now(new DateTimeZone($timezone)),
+            new RelationResolver($this->registry, $this->valuesCap()),
+        );
     }
 
     /**
@@ -348,6 +360,13 @@ class Executor
         }
 
         return $model === null ? 'id' : (new $model)->getKeyName();
+    }
+
+    protected function valuesCap(): int
+    {
+        $cap = $this->config->get('datawell.values.max');
+
+        return is_int($cap) && $cap > 0 ? $cap : 10;
     }
 
     protected function bucketCap(): int

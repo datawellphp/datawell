@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Datawell;
 
 use Closure;
+use Datawell\Result\EntityRef;
 
 /**
  * The entity's calling card (D21, D34): id + label, plus an optional URL resolver.
@@ -47,6 +48,21 @@ final class Representation
     public function urlFor(mixed $entity): ?string
     {
         return $this->url === null ? null : ($this->url)($entity);
+    }
+
+    /**
+     * The entity's calling card (D21): id, label and — when a resolver is declared — url.
+     */
+    public function refFor(object $entity, string $defaultId = 'id'): EntityRef
+    {
+        $label = data_get($entity, $this->label);
+        $id = data_get($entity, $this->id ?? $defaultId);
+
+        return new EntityRef(
+            is_int($id) || is_string($id) ? $id : (string) json_encode($id),
+            is_scalar($label) ? (string) $label : '',
+            $this->urlFor($entity),
+        );
     }
 
     /**

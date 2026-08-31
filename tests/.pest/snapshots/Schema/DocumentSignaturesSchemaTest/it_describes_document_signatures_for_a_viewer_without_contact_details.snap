@@ -29,6 +29,7 @@
             "label": "Signer",
             "type": "relation",
             "cardinality": "single",
+            "source": "people",
             "filterable": true,
             "searchable": true,
             "options": {
@@ -88,6 +89,7 @@
             "label": "Tags",
             "type": "relation",
             "cardinality": "many",
+            "source": "tags",
             "filterable": true,
             "options": {
                 "strategy": "source",

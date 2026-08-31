@@ -13,42 +13,66 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\Relations\Relation;
 
 /**
- * @internal Walks a dot path on a model and classifies its cardinality (D20).
- * The seam that becomes Phase 3's RelationResolver::cardinalityOf().
+ * @internal Walks a dot path on a model, splitting it into relations and column (D20).
+ * Definition-time (cardinality) and run-time (the strategies) both resolve paths here,
+ * so a segment is a relation in exactly one place: when the model has a method of that
+ * name returning a Relation.
  */
 class RelationIntrospector
 {
+    /**
+     * @param  class-string<Model>  $model
+     */
+    public function resolve(string $model, string $path): Resolved
+    {
+        $instance = new $model;
+        $segments = explode('.', $path);
+        $relations = [];
+        $many = false;
+        $column = null;
+
+        foreach ($segments as $index => $segment) {
+            $relation = $this->relationOn($instance, $segment);
+
+            if ($relation === null) {
+                $column = implode('.', array_slice($segments, $index));
+
+                break;
+            }
+
+            $relations[] = $segment;
+            $many = $many || $this->isMany($relation);
+            $instance = $relation->getRelated();
+        }
+
+        return new Resolved(
+            Path::make($relations, $column),
+            $relations === [] ? null : ($many ? Cardinality::Many : Cardinality::Single),
+            $relations === [] ? null : $instance::class,
+        );
+    }
+
     /**
      * @param  class-string<Model>  $model
      * @return Cardinality|null null when the path crosses no relation (a plain column)
      */
     public function cardinalityOf(string $model, string $path): ?Cardinality
     {
-        $instance = new $model;
-        $many = false;
-        $crossed = false;
+        return $this->resolve($model, $path)->cardinality;
+    }
 
-        foreach (explode('.', $path) as $segment) {
-            if (! method_exists($instance, $segment)) {
-                break;
-            }
-
-            $relation = $instance->{$segment}();
-
-            if (! $relation instanceof Relation) {
-                break;
-            }
-
-            $crossed = true;
-            $many = $many || $this->isMany($relation);
-            $instance = $relation->getRelated();
-        }
-
-        if (! $crossed) {
+    /**
+     * @return Relation<Model, Model, mixed>|null
+     */
+    protected function relationOn(Model $instance, string $segment): ?Relation
+    {
+        if (! method_exists($instance, $segment)) {
             return null;
         }
 
-        return $many ? Cardinality::Many : Cardinality::Single;
+        $relation = $instance->{$segment}();
+
+        return $relation instanceof Relation ? $relation : null;
     }
 
     /**

@@ -14,6 +14,7 @@ use Illuminate\Contracts\Config\Repository;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
 use Psr\Log\LoggerInterface;
+use Reedware\LaravelRelationJoins\LaravelRelationJoinServiceProvider;
 
 class DatawellServiceProvider extends ServiceProvider
 {
@@ -23,6 +24,10 @@ class DatawellServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->mergeConfigFrom(__DIR__.'/../config/datawell.php', 'datawell');
+
+        // The join package (D50) is used only inside Relations\RelationResolver; registering
+        // it here means a host with package discovery disabled still gets the mixin.
+        $this->app->register(LaravelRelationJoinServiceProvider::class);
 
         $this->app->singleton(Registry::class);
         $this->app->singleton(TimezoneResolver::class);

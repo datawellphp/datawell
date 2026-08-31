@@ -11,12 +11,14 @@ use Datawell\DataSource;
 use Datawell\Definition;
 use Datawell\Enums\ActionTarget;
 use Datawell\Enums\OptionsStrategy;
+use Datawell\Exceptions\DefinitionException;
 use Datawell\Fields\Field;
 use Datawell\Fields\RelationField;
 use Datawell\Filters\Filter;
 use Datawell\Operators\Operator;
 use Datawell\Parameter;
 use Datawell\Registry;
+use Datawell\Relations\RelationResolver;
 use Datawell\Sorts\Sort;
 use Datawell\Support\Key;
 
@@ -108,6 +110,8 @@ class DefinitionLinter
                 $key,
             ));
         }
+
+        $this->lintPath($source, $field, $definition, $registry);
 
         if ($field->isMany()) {
             if ($field->isSortable()) {
@@ -247,6 +251,57 @@ class DefinitionLinter
         }
 
         $this->assertRegistered($source, $registry, $parameter->getReference()?->sourceKey, sprintf('parameter "%s"', $key));
+    }
+
+    /**
+     * Paths are checked against the model where there is one (D20, D54): a dotted path
+     * must cross real relations, a relation field must end on a relation and resolve to
+     * exactly one target source, and a to-many relation field must be a direct relation.
+     */
+    protected function lintPath(string $source, Field $field, Definition $definition, Registry $registry): void
+    {
+        $model = $definition->model();
+
+        if ($model === null) {
+            return;
+        }
+
+        $key = $field->getKey();
+        $relations = new RelationResolver($registry);
+        $resolved = $relations->resolve($model, $field->getPath());
+        $path = $resolved->path;
+
+        if ($path->column !== null && str_contains($path->column, '.')) {
+            $this->error($source, sprintf(
+                'field "%s": "%s" is not a relation on %s (path "%s")',
+                $key,
+                explode('.', $path->column)[0],
+                $resolved->related ?? $model,
+                $field->getPath(),
+            ));
+
+            return;
+        }
+
+        if (! $field instanceof RelationField) {
+            return;
+        }
+
+        if (! $path->endsOnRelation()) {
+            $this->error($source, sprintf('field "%s": "%s" ends on a column; a relation field must name a relation', $key, $field->getPath()));
+
+            return;
+        }
+
+        if ($field->isMany() && count($path->relations) > 1) {
+            $this->error($source, sprintf('field "%s": a to-many relation field must name a direct relation, not "%s"', $key, $field->getPath()));
+        }
+
+        try {
+            $relations->target($field, $model);
+        } catch (DefinitionException $exception) {
+            $this->error($source, $exception->getMessage());
+        }
     }
 
     protected function assertRegistered(string $source, Registry $registry, ?string $referenced, string $where): void

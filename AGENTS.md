@@ -10,7 +10,7 @@ The design pack is the project's memory. It lives in the parent workspace at `..
 - `../docs/datasource-package-design.md` — the architecture: concepts, query grammar, permissions, timezone model, relations, executor pipeline, consumers, phased build plan, open questions.
 - `../docs/datasource-examples.md` — one source walked through every feature. PHP snippets are illustrative shape, not final API; the JSON wire formats are near-binding.
 - `../docs/datasource-class-diagram-v2.mermaid`, `../docs/datasource-executor-pipeline.mermaid` — the class model and the enforcement pipeline.
-- `../docs/phase-1-plan.md` — the current build phase's file layout and test plan.
+- `../docs/phase-3-plan.md` — the current build phase's file layout, slices and test plan (`phase-1-plan.md`, `phase-2-plan.md` record the completed phases).
 
 ## Package Conventions
 

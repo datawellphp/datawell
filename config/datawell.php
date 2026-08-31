@@ -64,6 +64,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Many-values
+    |--------------------------------------------------------------------------
+    |
+    | A many-valued relation field carries at most this many references per
+    | row, plus the total (D21). The remainder is retrievable through the
+    | executor's values() primitive (D39) — never silently dropped.
+    |
+    */
+
+    'values' => [
+        'max' => 10,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Definition Lint
     |--------------------------------------------------------------------------
     |

@@ -21,7 +21,10 @@ use Datawell\Params;
 use Datawell\Registry;
 use Datawell\Representation;
 use Datawell\Sorts\Sort;
+use Datawell\Tests\Fixtures\Models\Document;
 use Datawell\Tests\Fixtures\Models\Signature;
+use Datawell\Tests\Fixtures\Sources\Documents;
+use Datawell\Tests\Fixtures\Sources\People;
 use Datawell\Tests\Fixtures\Sources\Tags;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Query\Builder as QueryBuilder;
@@ -214,7 +217,48 @@ it('rejects duplicate keys and unregistered references', function (): void {
 
     expect($report->errors)->toBe([
         '[signatures] declares field "note" more than once',
+        '[signatures] field "signer" points at Datawell\\Tests\\Fixtures\\Models\\User, which no registered source declares; register one or declare ->references(\'<source-key>\')',
         '[signatures] field "signer" options references source "people", which is not registered',
+    ]);
+});
+
+it('rejects paths that name relations the model does not have', function (): void {
+    $report = lint(signatureSource([
+        TextField::make('signer_email', from: 'signr.email'),
+        TextField::make('owner_name', from: 'document.ownr.name'),
+    ]));
+
+    expect($report->errors)->toBe([
+        '[signatures] field "signer_email": "signr" is not a relation on Datawell\\Tests\\Fixtures\\Models\\Signature (path "signr.email")',
+        '[signatures] field "owner_name": "ownr" is not a relation on Datawell\\Tests\\Fixtures\\Models\\Document (path "document.ownr.name")',
+    ]);
+});
+
+it('resolves relation field targets explicitly, by inference, or not at all', function (): void {
+    $report = lint(
+        signatureSource([
+            RelationField::make('signer', from: 'signer'),                       // inferred: People declares User
+            RelationField::make('tags', from: 'tags')->references('tags'),       // explicit
+            RelationField::make('document', from: 'document'),                   // ambiguous: two sources declare Document
+            RelationField::make('signer_name', from: 'signer.name'),             // ends on a column
+            RelationField::make('nope', from: 'document.signatures')->cardinality(Cardinality::Many), // nested to-many
+        ]),
+        new People,
+        new Tags,
+        new Documents,
+        new #[Model(Document::class)] class extends Documents
+        {
+            public function key(): string
+            {
+                return 'my-documents';
+            }
+        },
+    );
+
+    expect($report->errors)->toBe([
+        '[signatures] field "document" points at Datawell\\Tests\\Fixtures\\Models\\Document, which "documents", "my-documents" all declare; pick one with ->references(\'<source-key>\')',
+        '[signatures] field "signer_name": "signer.name" ends on a column; a relation field must name a relation',
+        '[signatures] field "nope": a to-many relation field must name a direct relation, not "document.signatures"',
     ]);
 });
 

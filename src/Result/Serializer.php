@@ -51,15 +51,7 @@ class Serializer
      */
     public function ref(object $row, DataSource $source, string $keyName): EntityRef
     {
-        $representation = $source->representation();
-        $label = data_get($row, $representation->label);
-        $id = data_get($row, $representation->id ?? $keyName);
-
-        return new EntityRef(
-            is_int($id) || is_string($id) ? $id : (string) json_encode($id),
-            is_scalar($label) ? (string) $label : '',
-            $representation->hasUrl() ? $representation->urlFor($row) : null,
-        );
+        return $source->representation()->refFor($row, $keyName);
     }
 
     /**

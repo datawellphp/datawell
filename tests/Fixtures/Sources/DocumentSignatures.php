@@ -101,6 +101,7 @@ class DocumentSignatures extends DataSource
                 ->sortable()->filterable()->nullable(),
 
             RelationField::make('tags', from: 'tags')
+                ->references('tags')
                 ->filterable()
                 ->options(Options::source('tags')),
 

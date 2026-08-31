@@ -86,7 +86,7 @@ abstract class TestCase extends Orchestra
     }
 
     /**
-     * Create the fixture tables on the in-memory SQLite connection and seed people.
+     * Create the fixture tables on the test connection and seed people, documents and signatures.
      */
     protected function seedDatabase(): void
     {
@@ -94,5 +94,6 @@ abstract class TestCase extends Orchestra
         $schema->create();
         $schema->seedPeople();
         $schema->seedDocuments();
+        $schema->seedSignatures();
     }
 }

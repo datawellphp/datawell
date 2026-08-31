@@ -25,6 +25,7 @@
             "label": "Owner",
             "type": "relation",
             "cardinality": "single",
+            "source": "people",
             "filterable": true,
             "options": {
                 "strategy": "selfFacet"

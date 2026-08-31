@@ -1,0 +1,50 @@
+<?php
+
+declare(strict_types=1);
+
+namespace {{ namespace }};
+
+{{ imports }}
+
+{{ attribute }}class {{ class }} extends DataSource
+{
+    /**
+     * The wire identity: stamped at generation, never derived. Renaming the
+     * class must not change this.
+     */
+    public function key(): string
+    {
+        return '{{ key }}';
+    }
+
+    /**
+     * AI-facing prose: what this data is, in a sentence or two.
+     */
+    public function description(): string
+    {
+        return '';
+    }
+
+    public function representation(): Representation
+    {
+        return Representation::make(label: 'name');
+    }
+
+    /**
+     * The scoped base query. Row security lives here.
+     */
+    public function query(Params $params): Builder
+    {
+        {{ query }}
+    }
+
+    /**
+     * @return list<Field>
+     */
+    public function fields(): array
+    {
+        return [
+            //
+        ];
+    }
+}

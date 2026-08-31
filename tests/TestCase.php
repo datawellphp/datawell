@@ -29,6 +29,32 @@ abstract class TestCase extends Orchestra
         $app['config']->set('datawell.sources', [DocumentSignatures::class, Documents::class, Tags::class, People::class]);
         $app['config']->set('datawell.lint.enabled', true);
         $app['config']->set('app.timezone', 'UTC');
+
+        // The contract suite runs on SQLite by default; CI (and a developer with the
+        // service at hand) points it at MySQL or Postgres through DATAWELL_DB_*.
+        $driver = getenv('DATAWELL_DB') ?: 'sqlite';
+
+        if ($driver !== 'sqlite') {
+            $app['config']->set('database.default', 'datawell');
+            $app['config']->set('database.connections.datawell', [
+                'driver' => $driver,
+                'host' => getenv('DATAWELL_DB_HOST') ?: '127.0.0.1',
+                'port' => getenv('DATAWELL_DB_PORT') ?: ($driver === 'pgsql' ? '5432' : '3306'),
+                'database' => getenv('DATAWELL_DB_DATABASE') ?: 'datawell',
+                'username' => getenv('DATAWELL_DB_USERNAME') ?: 'root',
+                'password' => getenv('DATAWELL_DB_PASSWORD') ?: '',
+                'charset' => $driver === 'pgsql' ? 'utf8' : 'utf8mb4',
+                'collation' => $driver === 'pgsql' ? null : 'utf8mb4_unicode_ci',
+                'prefix' => '',
+                'strict' => true,
+                'timezone' => '+00:00',
+            ]);
+        }
+    }
+
+    protected function driver(): string
+    {
+        return getenv('DATAWELL_DB') ?: 'sqlite';
     }
 
     protected function setUp(): void

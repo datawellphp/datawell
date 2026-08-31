@@ -73,7 +73,6 @@ final class Raw
     {
         $driver = self::driver($query);
         $col = $query->getGrammar()->wrap($column);
-        $bindings = [];
 
         $converts = $timezone !== null && in_array($driver, ['mysql', 'mariadb', 'pgsql'], true);
 
@@ -81,7 +80,6 @@ final class Raw
             $col = $driver === 'pgsql'
                 ? "(({$col} AT TIME ZONE 'UTC') AT TIME ZONE ?)"
                 : "CONVERT_TZ({$col}, '+00:00', ?)";
-            $bindings[] = $timezone;
         }
 
         $sql = match ($driver) {
@@ -102,9 +100,9 @@ final class Raw
             },
         };
 
-        if ($converts && $driver !== 'pgsql' && $grain === 'week') {
-            $bindings[] = $timezone; // the column appears twice in the week expression
-        }
+        // The converted column may appear more than once (MySQL week/quarter); bind the
+        // timezone once per placeholder actually emitted.
+        $bindings = $converts ? array_fill(0, substr_count($sql, '?'), (string) $timezone) : [];
 
         return [$query->getConnection()->raw($sql), $bindings]; // @phpstan-ignore argument.type (grammar-wrapped identifier; grain and driver are package enums; timezone is a binding)
     }

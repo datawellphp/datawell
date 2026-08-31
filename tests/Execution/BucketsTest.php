@@ -58,7 +58,7 @@ it('buckets wall dates by grain on every driver, ordered chronologically', funct
     expect(array_column(array_column($years['buckets'], 'joined_on'), 'id'))->toBe(['2025-01-01', '2026-01-01']);
 });
 
-it('buckets instants by grain for a UTC user on sqlite', function (): void {
+it('buckets instants by grain for a UTC user on every driver', function (): void {
     $result = buckets(['groupBy' => [['key' => 'last_seen_at', 'grain' => 'day']], 'aggregates' => [['fn' => 'count']]], User::fake(9));
 
     expect(array_map(fn ($b) => [$b['last_seen_at']['id'], $b['count']], $result['buckets']))->toBe([
@@ -72,6 +72,28 @@ it('buckets instants by grain for a UTC user on sqlite', function (): void {
     ]);
 });
 
+it('buckets instants in the user\'s timezone on drivers that can convert (MySQL, Postgres)', function (): void {
+    // New York days: Anna 17 Aug, Ben + Cara 18 Aug, Eli 19 Aug, Ivy 10 Aug, Jon 20 Jul; Fay 7 Mar, Hana 9 Mar (Gus is inactive).
+    $result = buckets(['groupBy' => [['key' => 'last_seen_at', 'grain' => 'day']], 'aggregates' => [['fn' => 'count']]]);
+
+    expect(array_map(fn ($b) => [$b['last_seen_at']['id'], $b['count']], $result['buckets']))->toBe([
+        ['2026-03-07', 1], ['2026-03-09', 1], ['2026-07-20', 1], ['2026-08-10', 1], ['2026-08-17', 1], ['2026-08-18', 2], ['2026-08-19', 1],
+    ]);
+
+    $months = buckets(['groupBy' => [['key' => 'last_seen_at', 'grain' => 'month']], 'aggregates' => [['fn' => 'count']]]);
+    expect(array_map(fn ($b) => [$b['last_seen_at']['id'], $b['count']], $months['buckets']))->toBe([
+        ['2026-03-01', 2], ['2026-07-01', 1], ['2026-08-01', 5],
+    ]);
+
+    $weeks = buckets(['groupBy' => [['key' => 'last_seen_at', 'grain' => 'week']], 'aggregates' => [['fn' => 'count']]]);
+    expect(array_column(array_column($weeks['buckets'], 'last_seen_at'), 'id'))->toBe(['2026-03-02', '2026-03-09', '2026-07-20', '2026-08-10', '2026-08-17']);
+
+    $quarters = buckets(['groupBy' => [['key' => 'last_seen_at', 'grain' => 'quarter']], 'aggregates' => [['fn' => 'count']]]);
+    expect(array_map(fn ($b) => [$b['last_seen_at']['id'], $b['last_seen_at']['label'], $b['count']], $quarters['buckets']))->toBe([
+        ['2026-01-01', 'Q1 2026', 2], ['2026-07-01', 'Q3 2026', 6],
+    ]);
+})->skip(fn (): bool => test()->driver() === 'sqlite', 'SQLite cannot convert timezones (D51)');
+
 it('refuses to bucket instants in a non-UTC timezone on sqlite, explicitly (D51)', function (): void {
     $message = 'Field "last_seen_at" cannot be bucketed by day in America/New_York on sqlite: this driver cannot convert timezones, so date-time grains require a UTC effective timezone here.';
 
@@ -83,7 +105,7 @@ it('refuses to bucket instants in a non-UTC timezone on sqlite, explicitly (D51)
 
     // Wall dates never need conversion, so they bucket fine for the same user.
     expect(buckets(['groupBy' => [['key' => 'joined_on', 'grain' => 'month']], 'aggregates' => [['fn' => 'count']]])['meta']['count'])->toBe(4);
-});
+})->skip(fn (): bool => test()->driver() !== 'sqlite', 'Only SQLite refuses (D51)');
 
 it('caps buckets with an explicit truncated flag', function (): void {
     config()->set('datawell.buckets.max', 2);

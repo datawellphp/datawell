@@ -91,9 +91,11 @@ class Grouping
             );
 
             $selects[] = $query->getConnection()->raw($expression->getValue($query->getGrammar()).' as '.$query->getGrammar()->wrap($alias)); // @phpstan-ignore argument.type (grammar-wrapped alias around a Raw expression)
-            $query->groupBy($expression);
+            // Group by the alias: MySQL's ONLY_FULL_GROUP_BY cannot match a select
+            // expression to a GROUP BY expression once a binding is involved, and
+            // every supported driver accepts an output-column alias here.
+            $query->groupBy($alias);
             array_push($bindings, ...$expressionBindings);
-            array_push($bindings, ...$expressionBindings); // once for the select, once for the group by
         }
 
         foreach ($aggregates as $index => $aggregate) {
@@ -113,11 +115,7 @@ class Grouping
         $query->select($selects);
 
         if ($bindings !== []) {
-            // Select bindings precede group-by bindings in Laravel's binding order; the
-            // grain expression appears in both positions with the same timezone value.
-            $half = intdiv(count($bindings), 2);
-            $base->addBinding(array_slice($bindings, 0, $half), 'select');
-            $base->addBinding(array_slice($bindings, $half), 'groupBy');
+            $base->addBinding($bindings, 'select');
         }
     }
 

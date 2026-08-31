@@ -69,3 +69,62 @@ jobs:
       - name: Test Suite (Windows)
         if: runner.os == 'Windows'
         run: vendor/bin/pest
+
+  databases:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        db: [mysql, pgsql]
+
+    name: Contract suite - ${{ matrix.db }}
+
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: datawell
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping -uroot -proot" --health-interval=10s --health-timeout=5s --health-retries=10
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: root
+          POSTGRES_DB: datawell
+        ports:
+          - 5432:5432
+        options: --health-cmd="pg_isready -U postgres" --health-interval=10s --health-timeout=5s --health-retries=10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: 8.4
+          extensions: dom, curl, libxml, mbstring, zip, fileinfo, sqlite, pdo_sqlite, pdo_mysql, pdo_pgsql, bcmath, intl
+          ini-values: error_reporting=E_ALL
+          tools: composer:v2
+          coverage: none
+
+      - name: Install dependencies
+        run: |
+          composer update --prefer-stable --prefer-dist --no-interaction --no-progress --no-scripts
+          composer run prepare
+
+      - name: Load MySQL timezone tables
+        if: matrix.db == 'mysql'
+        run: mysql_tzinfo_to_sql /usr/share/zoneinfo | mysql -h127.0.0.1 -uroot -proot mysql
+
+      - name: Test Suite (${{ matrix.db }})
+        env:
+          DATAWELL_DB: ${{ matrix.db }}
+          DATAWELL_DB_HOST: 127.0.0.1
+          DATAWELL_DB_DATABASE: datawell
+          DATAWELL_DB_USERNAME: ${{ matrix.db == 'pgsql' && 'postgres' || 'root' }}
+          DATAWELL_DB_PASSWORD: root
+        run: vendor/bin/pest

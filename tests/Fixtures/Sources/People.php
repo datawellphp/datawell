@@ -66,7 +66,7 @@ class People extends DataSource
             DateField::make('joined_on')->sortable()->filterable()->nullable()
                 ->groupable(grains: [Grain::Month, Grain::Year]),
             DateTimeField::make('last_seen_at')->sortable()->filterable()->nullable()
-                ->groupable(grains: [Grain::Day, Grain::Week, Grain::Month]),
+                ->groupable(grains: [Grain::Day, Grain::Week, Grain::Month, Grain::Quarter]),
         ];
     }
 

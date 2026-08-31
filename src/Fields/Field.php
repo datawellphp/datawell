@@ -263,17 +263,49 @@ abstract class Field
     /**
      * Compile one validated filter condition onto the query. The operator is already
      * known to be legal for this field and the value already fits its shape (D09).
+     * A plain column compiles in place; a path through a relation compiles as a
+     * semi-join (`whereHas`) so to-many paths never duplicate rows (design doc §6).
      *
      * @param  EloquentBuilder<covariant Model>|QueryBuilder  $query
      */
     public function applyCondition(EloquentBuilder|QueryBuilder $query, Operator $operator, mixed $value, Context $context): void
     {
-        if (! $this->isColumn()) {
-            throw new UnsupportedException(sprintf('Field "%s" is relation-backed; relation filtering lands in Phase 3.', $this->key));
+        $relations = $context->relations();
+        $resolved = $relations->resolveField($query, $this);
+        $path = $resolved->path;
+
+        if (! $path->crossesRelation()) {
+            $this->applyColumnCondition($query, $path->column ?? $this->from, $operator, $value, $context);
+
+            return;
         }
 
-        $column = $this->from;
+        $column = (string) $path->column;
+        $on = function (EloquentBuilder $related, Operator $op, mixed $v) use ($column, $context): void {
+            $this->applyColumnCondition($related, $related->qualifyColumn($column), $op, $v, $context);
+        };
 
+        match ($operator) {
+            Operator::IsEmpty => $query->where(static function (EloquentBuilder|QueryBuilder $group) use ($relations, $path, $on): void {
+                $relations->has($group, $path, null, exists: false);
+                $relations->has($group, $path, static fn (EloquentBuilder $related) => $on($related, Operator::IsEmpty, null), boolean: 'or');
+            }),
+            Operator::IsNotEmpty => $relations->has($query, $path, static fn (EloquentBuilder $related) => $on($related, Operator::IsNotEmpty, null)),
+            Operator::HasAny => $relations->has($query, $path, static fn (EloquentBuilder $related) => $on($related, Operator::In, $value)),
+            Operator::HasNone => $relations->has($query, $path, static fn (EloquentBuilder $related) => $on($related, Operator::In, $value), exists: false),
+            Operator::HasAll => array_walk($value, static fn (mixed $one) => $relations->has($query, $path, static fn (EloquentBuilder $related) => $on($related, Operator::Equals, $one))),
+            default => $relations->has($query, $path, static fn (EloquentBuilder $related) => $on($related, $operator, $value)),
+        };
+    }
+
+    /**
+     * The per-type compilation of an operator against one column — the hook concrete
+     * types override; the column is already qualified and resolved.
+     *
+     * @param  EloquentBuilder<covariant Model>|QueryBuilder  $query
+     */
+    protected function applyColumnCondition(EloquentBuilder|QueryBuilder $query, string $column, Operator $operator, mixed $value, Context $context): void
+    {
         match ($operator) {
             Operator::IsEmpty => $query->whereNull($column),
             Operator::IsNotEmpty => $query->whereNotNull($column),

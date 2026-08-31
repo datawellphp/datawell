@@ -120,7 +120,7 @@ class Executor
         $this->compiler->filters($query, $applied->filters, $definition, $context);
 
         if ($applied->search !== null && $applied->search !== '') {
-            $this->compiler->search($query, $applied->search, $visibleFields);
+            $this->compiler->search($query, $applied->search, $visibleFields, $context);
         }
 
         if ($applied->isAggregate()) {

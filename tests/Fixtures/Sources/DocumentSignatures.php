@@ -87,6 +87,7 @@ class DocumentSignatures extends DataSource
                 ->options(Options::selfFacet()),
 
             TextField::make('signer_email', from: 'signer.email')
+                ->filterable()->searchable()->nullable()
                 ->visibleWhen('view-contact-details'),
 
             EnumField::make('status', SignatureStatus::class)

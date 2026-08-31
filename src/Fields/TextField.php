@@ -31,7 +31,7 @@ class TextField extends Field
         return [Operator::Equals, Operator::NotEquals, Operator::Contains, Operator::StartsWith, Operator::EndsWith];
     }
 
-    public function applyCondition(EloquentBuilder|QueryBuilder $query, Operator $operator, mixed $value, Context $context): void
+    protected function applyColumnCondition(EloquentBuilder|QueryBuilder $query, string $column, Operator $operator, mixed $value, Context $context): void
     {
         $pattern = match ($operator) {
             Operator::Contains => Like::contains((string) $value),
@@ -41,12 +41,12 @@ class TextField extends Field
         };
 
         if ($pattern === null) {
-            parent::applyCondition($query, $operator, $value, $context);
+            parent::applyColumnCondition($query, $column, $operator, $value, $context);
 
             return;
         }
 
-        $query->whereRaw(Raw::like($query, $this->getPath()), [$pattern, Raw::ESCAPE]);
+        $query->whereRaw(Raw::like($query, $column), [$pattern, Raw::ESCAPE]);
     }
 
     public function castValue(mixed $value): mixed

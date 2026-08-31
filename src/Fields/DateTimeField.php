@@ -38,16 +38,16 @@ class DateTimeField extends Field
         return [Operator::On, Operator::Before, Operator::After, Operator::Between];
     }
 
-    public function applyCondition(EloquentBuilder|QueryBuilder $query, Operator $operator, mixed $value, Context $context): void
+    protected function applyColumnCondition(EloquentBuilder|QueryBuilder $query, string $column, Operator $operator, mixed $value, Context $context): void
     {
         if (in_array($operator, [Operator::IsEmpty, Operator::IsNotEmpty], true)) {
-            parent::applyCondition($query, $operator, $value, $context);
+            parent::applyColumnCondition($query, $column, $operator, $value, $context);
 
             return;
         }
 
         foreach (Dates::comparisons($operator, $value, $context, instant: true) as [$comparison, $boundary]) {
-            $query->where($this->getPath(), $comparison, $boundary);
+            $query->where($column, $comparison, $boundary);
         }
     }
 

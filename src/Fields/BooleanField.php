@@ -29,15 +29,15 @@ class BooleanField extends Field
         return [Operator::Is];
     }
 
-    public function applyCondition(EloquentBuilder|QueryBuilder $query, Operator $operator, mixed $value, Context $context): void
+    protected function applyColumnCondition(EloquentBuilder|QueryBuilder $query, string $column, Operator $operator, mixed $value, Context $context): void
     {
         if ($operator === Operator::Is) {
-            $query->where($this->getPath(), '=', (bool) $value);
+            $query->where($column, '=', (bool) $value);
 
             return;
         }
 
-        parent::applyCondition($query, $operator, $value, $context);
+        parent::applyColumnCondition($query, $column, $operator, $value, $context);
     }
 
     public function serialize(object $row, Context $context): mixed

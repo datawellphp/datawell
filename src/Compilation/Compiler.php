@@ -9,6 +9,7 @@ use Datawell\Enums\ValueShape;
 use Datawell\Exceptions\UnsupportedException;
 use Datawell\Execution\Context;
 use Datawell\Fields\Field;
+use Datawell\Fields\RelationField;
 use Datawell\Filters\Filter;
 use Datawell\Query\FilterCondition;
 use Datawell\Query\FilterGroup;
@@ -78,14 +79,14 @@ class Compiler
      * @param  EloquentBuilder<covariant Model>|QueryBuilder  $query
      * @param  array<string, Field>  $visibleFields
      */
-    public function search(EloquentBuilder|QueryBuilder $query, string $search, array $visibleFields): void
+    public function search(EloquentBuilder|QueryBuilder $query, string $search, array $visibleFields, Context $context): void
     {
         $searchable = array_values(array_filter(
             $visibleFields,
-            static fn (Field $field): bool => $field->isSearchable() && $field->isColumn() && $field->type() === 'text',
+            static fn (Field $field): bool => $field->isSearchable() && ($field->type() === 'text' || $field instanceof RelationField),
         ));
 
-        Search::apply($query, $search, $searchable);
+        Search::apply($query, $search, $searchable, $context);
     }
 
     /**

@@ -40,7 +40,10 @@
             "key": "signer_email",
             "label": "Signer Email",
             "type": "text",
-            "cardinality": "single"
+            "cardinality": "single",
+            "filterable": true,
+            "searchable": true,
+            "nullable": true
         },
         {
             "key": "status",
@@ -119,6 +122,20 @@
             "operators": [
                 "in",
                 "notIn"
+            ]
+        },
+        {
+            "key": "signer_email",
+            "label": "Signer Email",
+            "type": "text",
+            "operators": [
+                "equals",
+                "notEquals",
+                "contains",
+                "startsWith",
+                "endsWith",
+                "isEmpty",
+                "isNotEmpty"
             ]
         },
         {

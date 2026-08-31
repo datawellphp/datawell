@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Datawell\Execution\Channel;
 use Datawell\Executor;
+use Datawell\Validation\ValidationException;
 
 beforeEach(function (): void {
     $this->seedDatabase();
@@ -89,4 +90,69 @@ it('resolves the representation through a relation for lookups', function (): vo
     $ref = app(Executor::class)->lookup('document-signatures', 1, test()->viewer(), ['document_id' => 123]);
 
     expect($ref?->toArray())->toBe(['id' => 1, 'label' => 'Anna Smith', 'url' => '/documents/123/signatures/1']);
+});
+
+function filtered(array $conditions, $user = null): array
+{
+    return ids(signatures(['filters' => ['conditions' => $conditions], 'page' => ['size' => 20]], $user));
+}
+
+it('filters a to-one relation field by id: in as a semi-join, notIn as its anti-join', function (): void {
+    expect(filtered([['filter' => 'signer', 'operator' => 'in', 'value' => [1, 3]]]))->toBe([4, 3, 1])
+        // notIn keeps the row with no signer at all (D54).
+        ->and(filtered([['filter' => 'signer', 'operator' => 'notIn', 'value' => [1]]]))->toBe([6, 5, 3, 2]);
+});
+
+it('filters a to-many relation field with the documented tag combinations (examples §6)', function (): void {
+    expect(filtered([['filter' => 'tags', 'operator' => 'hasAny', 'value' => [14, 9]]]))->toBe([6, 4, 2, 1])
+        ->and(filtered([['filter' => 'tags', 'operator' => 'hasAll', 'value' => [14, 3]]]))->toBe([4, 1])
+        ->and(filtered([['filter' => 'tags', 'operator' => 'hasNone', 'value' => [9]]]))->toBe([5, 3, 2, 1])
+        ->and(filtered([['filter' => 'tags', 'operator' => 'isEmpty']]))->toBe([5, 3])
+        ->and(filtered([['filter' => 'tags', 'operator' => 'isNotEmpty']]))->toBe([6, 4, 2, 1])
+        ->and(filtered([
+            ['filter' => 'tags', 'operator' => 'hasAll', 'value' => [14, 3]],
+            ['filter' => 'tags', 'operator' => 'hasNone', 'value' => [9]],
+        ]))->toBe([1]);
+});
+
+it('never duplicates a parent row however many related rows match', function (): void {
+    $result = signatures(['filters' => ['conditions' => [['filter' => 'tags', 'operator' => 'hasAny', 'value' => [3, 9, 14]]]], 'page' => ['number' => 1, 'size' => 20]]);
+
+    expect(ids($result))->toBe([6, 4, 2, 1])->and($result['meta']['total'])->toBe(4);
+});
+
+it('filters a relation-backed scalar through the relation', function (): void {
+    $user = test()->privilegedViewer();
+
+    expect(filtered([['filter' => 'signer_email', 'operator' => 'endsWith', 'value' => '@acme.com']], $user))->toBe([4, 2, 1])
+        ->and(filtered([['filter' => 'signer_email', 'operator' => 'equals', 'value' => 'cara@rival.com']], $user))->toBe([3])
+        // isEmpty on a to-one path: no signer, or a signer without the value.
+        ->and(filtered([['filter' => 'signer_email', 'operator' => 'isEmpty']], $user))->toBe([6])
+        ->and(filtered([['filter' => 'signer_email', 'operator' => 'isNotEmpty']], $user))->toBe([5, 4, 3, 2, 1]);
+});
+
+it('combines relation filters inside boolean groups', function (): void {
+    $result = signatures(['filters' => ['boolean' => 'or', 'conditions' => [
+        ['filter' => 'signer', 'operator' => 'in', 'value' => [3]],
+        ['boolean' => 'and', 'conditions' => [
+            ['filter' => 'tags', 'operator' => 'hasAny', 'value' => [9]],
+            ['filter' => 'status', 'operator' => 'in', 'value' => ['pending']],
+        ]],
+    ]], 'page' => ['size' => 20]]);
+
+    expect(ids($result))->toBe([6, 4, 3]);
+});
+
+it('searches through a relation field via the target label and through relation-backed text', function (): void {
+    expect(ids(signatures(['search' => 'smith', 'page' => ['size' => 20]])))->toBe([4, 3, 1])
+        ->and(ids(signatures(['search' => 'anna smith', 'page' => ['size' => 20]])))->toBe([4, 1])
+        // The hidden signer_email is not searched for the viewer…
+        ->and(ids(signatures(['search' => 'rival', 'page' => ['size' => 20]])))->toBe([])
+        // …but it is for a user who may see it.
+        ->and(ids(signatures(['search' => 'rival', 'page' => ['size' => 20]], test()->privilegedViewer())))->toBe([3]);
+});
+
+it('rejects filters on hidden relation-backed fields as unknown', function (): void {
+    expect(fn () => signatures(['filters' => ['conditions' => [['filter' => 'signer_email', 'operator' => 'contains', 'value' => '@rival.com']]]]))
+        ->toThrow(ValidationException::class, 'Unknown filter "signer_email".');
 });

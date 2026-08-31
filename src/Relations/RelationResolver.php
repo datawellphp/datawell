@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Datawell\Relations;
 
+use Closure;
 use Datawell\DataSource;
 use Datawell\Enums\Cardinality;
 use Datawell\Exceptions\DefinitionException;
@@ -197,6 +198,41 @@ class RelationResolver
         if ($counts !== []) {
             $query->withCount($counts);
         }
+    }
+
+    /**
+     * Filter/search strategy (§6): existence through the relation — `whereHas` or
+     * `whereDoesntHave`, nested for dotted paths — so a to-many path never duplicates
+     * parent rows. The constraint runs on the related model's builder.
+     *
+     * @param  EloquentBuilder<covariant Model>|QueryBuilder  $query
+     * @param  (Closure(EloquentBuilder<covariant Model>): mixed)|null  $constraint
+     */
+    public function has(EloquentBuilder|QueryBuilder $query, Path $path, ?Closure $constraint, bool $exists = true, string $boolean = 'and'): void
+    {
+        if (! $query instanceof EloquentBuilder) {
+            throw new UnsupportedException(sprintf('Filtering through "%s" needs an Eloquent builder; the source query is a plain query builder.', $path->relation()));
+        }
+
+        $query->has($path->relation(), $exists ? '>=' : '<', 1, $boolean, $constraint);
+    }
+
+    /**
+     * Where a relation field's search and sort land: the target representation's label,
+     * resolved against the related model and appended to the field's own path.
+     *
+     * @param  class-string<Model>  $model  the model the field's source queries
+     */
+    public function labelPath(RelationField $field, string $model): Path
+    {
+        $resolved = $this->resolve($model, $field->getPath());
+        $target = $this->target($field, $model);
+
+        if ($resolved->related === null) {
+            throw new UnsupportedException(sprintf('Relation field "%s" does not resolve to a relation on %s.', $field->getKey(), $model));
+        }
+
+        return $resolved->path->then($this->resolve($resolved->related, $target->representation()->label)->path);
     }
 
     /**

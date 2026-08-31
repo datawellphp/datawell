@@ -10,7 +10,12 @@ use Datawell\Concerns\HasLabel;
 use Datawell\Concerns\HasVisibility;
 use Datawell\Enums\AggregateType;
 use Datawell\Enums\Cardinality;
+use Datawell\Exceptions\UnsupportedException;
+use Datawell\Execution\Context;
 use Datawell\Operators\Operator;
+use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 
 /**
  * A typed unit of data exposed by a source (D03, D33). One concrete class per type,
@@ -245,5 +250,67 @@ abstract class Field
     protected function describeExtra(): array
     {
         return [];
+    }
+
+    /**
+     * Whether this field's data path names a plain column on the base table.
+     */
+    public function isColumn(): bool
+    {
+        return ! str_contains($this->from, '.');
+    }
+
+    /**
+     * Compile one validated filter condition onto the query. The operator is already
+     * known to be legal for this field and the value already fits its shape (D09).
+     *
+     * @param  EloquentBuilder<covariant Model>|QueryBuilder  $query
+     */
+    public function applyCondition(EloquentBuilder|QueryBuilder $query, Operator $operator, mixed $value, Context $context): void
+    {
+        if (! $this->isColumn()) {
+            throw new UnsupportedException(sprintf('Field "%s" is relation-backed; relation filtering lands in Phase 3.', $this->key));
+        }
+
+        $column = $this->from;
+
+        match ($operator) {
+            Operator::IsEmpty => $query->whereNull($column),
+            Operator::IsNotEmpty => $query->whereNotNull($column),
+            Operator::Equals => $query->where($column, '=', $this->castValue($value)),
+            Operator::NotEquals => $query->where($column, '!=', $this->castValue($value)),
+            Operator::Gt => $query->where($column, '>', $this->castValue($value)),
+            Operator::Gte => $query->where($column, '>=', $this->castValue($value)),
+            Operator::Lt => $query->where($column, '<', $this->castValue($value)),
+            Operator::Lte => $query->where($column, '<=', $this->castValue($value)),
+            Operator::Between => $query->whereBetween($column, [$this->castValue($value['from']), $this->castValue($value['to'])]),
+            Operator::In => $query->whereIn($column, array_map($this->castValue(...), $value)),
+            Operator::NotIn => $query->whereNotIn($column, array_map($this->castValue(...), $value)),
+            default => throw new UnsupportedException(sprintf('Operator "%s" has no compilation for field "%s".', $operator->value, $this->key)),
+        };
+    }
+
+    /**
+     * Normalise a wire value to what the database compares against.
+     */
+    public function castValue(mixed $value): mixed
+    {
+        return $value;
+    }
+
+    /**
+     * Read this field's raw value off a fetched row.
+     */
+    public function valueOf(object $row): mixed
+    {
+        return data_get($row, $this->from);
+    }
+
+    /**
+     * The wire form of this field's value for one row.
+     */
+    public function serialize(object $row, Context $context): mixed
+    {
+        return $this->valueOf($row);
     }
 }

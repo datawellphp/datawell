@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Datawell\Fields;
 
+use Datawell\Exceptions\UnsupportedException;
+use Datawell\Execution\Context;
 use Datawell\Fields\Concerns\HasOptions;
 use Datawell\Operators\Operator;
 use Datawell\Options;
@@ -38,5 +40,10 @@ class RelationField extends Field
     protected function defaultOptions(): ?Options
     {
         return Options::selfFacet();
+    }
+
+    public function serialize(object $row, Context $context): mixed
+    {
+        throw new UnsupportedException(sprintf('Relation field "%s" cannot be serialized until Phase 3.', $this->getKey()));
     }
 }

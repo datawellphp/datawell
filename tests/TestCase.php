@@ -10,6 +10,7 @@ use Datawell\Tests\Fixtures\Models\User;
 use Datawell\Tests\Fixtures\Policies\SignaturePolicy;
 use Datawell\Tests\Fixtures\Sources\Documents;
 use Datawell\Tests\Fixtures\Sources\DocumentSignatures;
+use Datawell\Tests\Fixtures\Sources\People;
 use Datawell\Tests\Fixtures\Sources\Tags;
 use Illuminate\Support\Facades\Gate;
 use Orchestra\Testbench\TestCase as Orchestra;
@@ -25,7 +26,7 @@ abstract class TestCase extends Orchestra
 
     protected function defineEnvironment($app): void
     {
-        $app['config']->set('datawell.sources', [DocumentSignatures::class, Documents::class, Tags::class]);
+        $app['config']->set('datawell.sources', [DocumentSignatures::class, Documents::class, Tags::class, People::class]);
         $app['config']->set('datawell.lint.enabled', true);
         $app['config']->set('app.timezone', 'UTC');
     }
@@ -56,5 +57,16 @@ abstract class TestCase extends Orchestra
     protected function outsider(): User
     {
         return User::fake(3);
+    }
+
+    /**
+     * Create the fixture tables on the in-memory SQLite connection and seed people.
+     */
+    protected function seedDatabase(): void
+    {
+        $schema = require __DIR__.'/Fixtures/Database/schema.php';
+        $schema->create();
+        $schema->seedPeople();
+        $schema->seedDocuments();
     }
 }

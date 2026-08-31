@@ -23,7 +23,8 @@ use Datawell\Representation;
 use Datawell\Sorts\Sort;
 use Datawell\Tests\Fixtures\Models\Signature;
 use Datawell\Tests\Fixtures\Sources\Tags;
-use Illuminate\Contracts\Database\Query\Builder;
+use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 
 /**
  * @param  list<Field>  $fields
@@ -55,7 +56,7 @@ function signatureSource(array $fields, array $filters = [], array $sorts = [], 
             return Representation::make('id');
         }
 
-        public function query(Params $params): Builder
+        public function query(Params $params): EloquentBuilder|QueryBuilder
         {
             return Signature::query();
         }

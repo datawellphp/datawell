@@ -91,6 +91,14 @@ class Sort
     }
 
     /**
+     * @return (Closure(mixed, string): void)|null
+     */
+    public function getApply(): ?Closure
+    {
+        return $this->apply;
+    }
+
+    /**
      * Effective visibility: own check AND the backing field's (D17).
      */
     public function isVisibleTo(Authenticatable $user): bool

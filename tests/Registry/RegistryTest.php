@@ -13,7 +13,7 @@ it('registers the configured sources at boot', function (): void {
     $registry = app(Registry::class);
 
     expect(array_map(fn ($source) => $source->key(), $registry->all()))
-        ->toBe(['document-signatures', 'documents', 'tags'])
+        ->toBe(['document-signatures', 'documents', 'tags', 'people'])
         ->and($registry->has('tags'))->toBeTrue()
         ->and($registry->find('documents'))->toBeInstanceOf(Documents::class);
 });
@@ -39,5 +39,5 @@ it('rejects two classes claiming one key', function (): void {
 it('is idempotent for the same class', function (): void {
     $registry = app(Registry::class)->register(Tags::class);
 
-    expect(count($registry->all()))->toBe(3);
+    expect(count($registry->all()))->toBe(4);
 });

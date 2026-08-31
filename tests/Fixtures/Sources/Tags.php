@@ -10,7 +10,8 @@ use Datawell\Fields\TextField;
 use Datawell\Params;
 use Datawell\Representation;
 use Datawell\Tests\Fixtures\Models\Tag;
-use Illuminate\Contracts\Database\Query\Builder;
+use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 
 #[Model(Tag::class)]
 class Tags extends DataSource
@@ -31,7 +32,7 @@ class Tags extends DataSource
         return Representation::make(label: 'name');
     }
 
-    public function query(Params $params): Builder
+    public function query(Params $params): EloquentBuilder|QueryBuilder
     {
         return Tag::query();
     }

@@ -10,7 +10,7 @@ use Datawell\Tests\Fixtures\Sources\Tags;
 
 it('passes for the fixture sources', function (): void {
     $this->artisan('datawell:lint')
-        ->expectsOutputToContain('3 data source(s) linted, 0 warning(s).')
+        ->expectsOutputToContain('4 data source(s) linted, 0 warning(s).')
         ->assertSuccessful();
 });
 

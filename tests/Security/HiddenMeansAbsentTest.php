@@ -35,8 +35,8 @@ it('lists only the sources a user may know exist', function (): void {
 
     $keys = fn ($user) => array_map(fn ($source) => $source->key(), $registry->availableFor($user));
 
-    expect($keys($this->viewer()))->toBe(['document-signatures', 'documents', 'tags'])
-        ->and($keys($this->outsider()))->toBe(['documents', 'tags']);
+    expect($keys($this->viewer()))->toBe(['document-signatures', 'documents', 'tags', 'people'])
+        ->and($keys($this->outsider()))->toBe(['documents', 'tags', 'people']);
 });
 
 it('omits an action hidden for the user', function (): void {

@@ -9,6 +9,7 @@ use Datawell\Console\MakeDatawellCommand;
 use Datawell\Exceptions\DefinitionException;
 use Datawell\Lint\DefinitionLinter;
 use Datawell\Timezone\TimezoneResolver;
+use Datawell\Validation\ProvenanceResolver;
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
@@ -26,6 +27,7 @@ class DatawellServiceProvider extends ServiceProvider
         $this->app->singleton(Registry::class);
         $this->app->singleton(TimezoneResolver::class);
         $this->app->singleton(Executor::class);
+        $this->app->singleton(ProvenanceResolver::class);
     }
 
     /**

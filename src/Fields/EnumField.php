@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Datawell\Fields;
 
 use BackedEnum;
+use Datawell\Execution\Context;
 use Datawell\Fields\Concerns\HasOptions;
 use Datawell\Operators\Operator;
 use Datawell\Options;
@@ -57,13 +58,49 @@ class EnumField extends Field
         $values = [];
 
         foreach ($this->enum::cases() as $case) {
-            $values[] = [
-                'id' => $case instanceof BackedEnum ? $case->value : $case->name,
-                'label' => self::labelOf($case),
-            ];
+            $values[] = ['id' => self::idOf($case), 'label' => self::labelOf($case)];
         }
 
         return Options::inline($values);
+    }
+
+    public function castValue(mixed $value): mixed
+    {
+        return $value instanceof UnitEnum ? self::idOf($value) : $value;
+    }
+
+    /**
+     * Enum values serialize as references: `{ id, label }` (D21, D32).
+     */
+    public function serialize(object $row, Context $context): mixed
+    {
+        $raw = $this->valueOf($row);
+
+        if ($raw === null) {
+            return null;
+        }
+
+        $case = $raw instanceof UnitEnum ? $raw : $this->caseFor($raw);
+
+        return $case === null
+            ? ['id' => $raw, 'label' => is_scalar($raw) ? (string) $raw : '']
+            : ['id' => self::idOf($case), 'label' => self::labelOf($case)];
+    }
+
+    protected function caseFor(mixed $raw): ?UnitEnum
+    {
+        foreach ($this->enum::cases() as $case) {
+            if (self::idOf($case) === $raw) {
+                return $case;
+            }
+        }
+
+        return null;
+    }
+
+    public static function idOf(UnitEnum $case): int|string
+    {
+        return $case instanceof BackedEnum ? $case->value : $case->name;
     }
 
     public static function labelOf(UnitEnum $case): string

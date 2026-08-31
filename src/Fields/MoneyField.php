@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Datawell\Fields;
 
+use Datawell\Execution\Context;
 use Datawell\Operators\Operator;
 
 class MoneyField extends Field
@@ -24,5 +25,17 @@ class MoneyField extends Field
     protected function singleOperators(): array
     {
         return [Operator::Equals, Operator::NotEquals, Operator::Gt, Operator::Gte, Operator::Lt, Operator::Lte, Operator::Between];
+    }
+
+    public function castValue(mixed $value): mixed
+    {
+        return is_numeric($value) ? $value + 0 : $value;
+    }
+
+    public function serialize(object $row, Context $context): mixed
+    {
+        $value = $this->valueOf($row);
+
+        return is_numeric($value) ? $value + 0 : $value;
     }
 }

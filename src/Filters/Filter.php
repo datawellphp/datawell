@@ -154,6 +154,14 @@ class Filter
         return $this->apply !== null;
     }
 
+    /**
+     * @return (Closure(mixed, Operator, mixed): void)|null
+     */
+    public function getApply(): ?Closure
+    {
+        return $this->apply;
+    }
+
     public function getType(): ?string
     {
         return $this->field?->type() ?? $this->type;
@@ -178,6 +186,16 @@ class Filter
     public function hasDefault(): bool
     {
         return $this->defaultOperator !== null;
+    }
+
+    public function getDefaultOperator(): ?Operator
+    {
+        return $this->defaultOperator;
+    }
+
+    public function getDefaultValue(): mixed
+    {
+        return $this->defaultValue;
     }
 
     /**

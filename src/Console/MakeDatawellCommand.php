@@ -71,7 +71,8 @@ class MakeDatawellCommand extends GeneratorCommand
             'Datawell\Fields\Field',
             'Datawell\Params',
             'Datawell\Representation',
-            'Illuminate\Contracts\Database\Query\Builder',
+            'Illuminate\Database\Eloquent\Builder as EloquentBuilder',
+            'Illuminate\Database\Query\Builder as QueryBuilder',
         ];
 
         if ($model !== null) {

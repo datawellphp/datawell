@@ -11,6 +11,11 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 /**
  * @property int $id
  * @property string $name
+ * @property string|null $email
+ * @property string $role
+ * @property int|null $age
+ * @property bool $active
+ * @property string|null $notes
  * @property string|null $timezone
  * @property list<string> $abilities
  */

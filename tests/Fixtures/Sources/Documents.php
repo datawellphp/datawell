@@ -16,7 +16,8 @@ use Datawell\Operators\Operator;
 use Datawell\Params;
 use Datawell\Representation;
 use Datawell\Tests\Fixtures\Models\Document;
-use Illuminate\Contracts\Database\Query\Builder;
+use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 
 #[Model(Document::class)]
 class Documents extends DataSource
@@ -37,7 +38,7 @@ class Documents extends DataSource
             ->url(fn (Document $document): string => "/documents/{$document->id}");
     }
 
-    public function query(Params $params): Builder
+    public function query(Params $params): EloquentBuilder|QueryBuilder
     {
         return Document::query();
     }

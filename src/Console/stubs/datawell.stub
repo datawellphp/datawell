@@ -33,7 +33,7 @@ namespace {{ namespace }};
     /**
      * The scoped base query. Row security lives here.
      */
-    public function query(Params $params): Builder
+    public function query(Params $params): EloquentBuilder|QueryBuilder
     {
         {{ query }}
     }

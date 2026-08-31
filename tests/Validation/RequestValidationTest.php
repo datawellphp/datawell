@@ -12,6 +12,10 @@ use Datawell\Tests\Fixtures\Sources\DocumentSignatures;
 use Datawell\Validation\ValidationException;
 use Illuminate\Contracts\Auth\Authenticatable;
 
+beforeEach(function (): void {
+    $this->seedDatabase();
+});
+
 function validate(array $wire, ?Authenticatable $user = null, Channel $channel = Channel::Direct): array
 {
     return app(Executor::class)->validate(['source' => 'document-signatures', ...$wire], $user ?? test()->viewer(), $channel)->errors;
@@ -89,7 +93,7 @@ it('rejects the documented failure cases', function (array $wire, string $path, 
 ]);
 
 it('accepts every documented value form', function (array $leaf): void {
-    expect(validate(['parameters' => ['document_id' => 1], 'filters' => ['conditions' => [$leaf]]]))->toBe([]);
+    expect(validate(['parameters' => ['document_id' => 123], 'filters' => ['conditions' => [$leaf]]]))->toBe([]);
 })->with([
     'status in' => [['filter' => 'status', 'operator' => 'in', 'value' => ['pending', 'signed']]],
     'date on' => [['filter' => 'signed_at', 'operator' => 'on', 'value' => '2026-08-18']],
@@ -125,7 +129,7 @@ it('lets a privileged user filter and sort on the field hidden from others', fun
 
     $wire = fn (Authenticatable $user) => app(Executor::class)->validate([
         'source' => 'contact-signatures',
-        'parameters' => ['document_id' => 1],
+        'parameters' => ['document_id' => 123],
         'filters' => ['conditions' => [['filter' => 'signer_phone', 'operator' => 'contains', 'value' => '555']]],
         'sorts' => [['key' => 'signer_phone']],
     ], $user)->errors;
@@ -140,7 +144,7 @@ it('lets a privileged user filter and sort on the field hidden from others', fun
 it('validates parameters with Laravel rules and fills defaults', function (): void {
     expect(validate([]))->toBe(['parameters.document_id' => ['The document id field is required.']])
         ->and(validate(['parameters' => ['document_id' => 'abc']]))->toBe(['parameters.document_id' => ['The document id field must be an integer.']])
-        ->and(validate(['parameters' => ['document_id' => 1, 'extra' => 2]]))->toBe(['parameters.extra' => ['Unknown parameter "extra".']]);
+        ->and(validate(['parameters' => ['document_id' => 123, 'extra' => 2]]))->toBe(['parameters.extra' => ['Unknown parameter "extra".']]);
 });
 
 it('masks a failed authorize() as an invalid parameter', function (): void {
@@ -166,7 +170,7 @@ it('masks a failed authorize() as an invalid parameter', function (): void {
 });
 
 it('applies the stricter page ceiling on delegated channels', function (): void {
-    $wire = ['parameters' => ['document_id' => 1], 'page' => ['size' => 60]];
+    $wire = ['parameters' => ['document_id' => 123], 'page' => ['size' => 60]];
 
     expect(validate($wire, channel: Channel::Direct))->toBe([])
         ->and(validate($wire, channel: Channel::DelegatedInteractive))->toBe(['page.size' => ['Page size may not exceed 50.']]);

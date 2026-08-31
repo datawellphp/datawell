@@ -14,8 +14,9 @@ use Datawell\Sorts\Sort;
 use Datawell\Support\Key;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Auth\Authenticatable;
-use Illuminate\Contracts\Database\Query\Builder;
+use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use ReflectionClass;
 
 /**
@@ -79,8 +80,10 @@ abstract class DataSource
 
     /**
      * The scoped base query. Row security lives here; everything downstream inherits it.
+     *
+     * @return EloquentBuilder<covariant Model>|QueryBuilder
      */
-    abstract public function query(Params $params): Builder;
+    abstract public function query(Params $params): EloquentBuilder|QueryBuilder;
 
     /**
      * @return list<Field>

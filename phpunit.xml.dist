@@ -33,6 +33,7 @@
             <directory>tests/Console</directory>
             <directory>tests/Query</directory>
             <directory>tests/Validation</directory>
+            <directory>tests/Execution</directory>
         </testsuite>
     </testsuites>
     <source>

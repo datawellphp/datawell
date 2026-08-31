@@ -23,7 +23,8 @@ use Datawell\Representation;
 use Datawell\Tests\Fixtures\Enums\SignatureStatus;
 use Datawell\Tests\Fixtures\Models\Signature;
 use Illuminate\Contracts\Auth\Authenticatable;
-use Illuminate\Contracts\Database\Query\Builder;
+use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 
 /**
  * The worked example from docs/datasource-examples.md, ported as the first real source.
@@ -73,7 +74,7 @@ class DocumentSignatures extends DataSource
         ];
     }
 
-    public function query(Params $params): Builder
+    public function query(Params $params): EloquentBuilder|QueryBuilder
     {
         return Signature::query()->where('document_id', $params->get('document_id'));
     }

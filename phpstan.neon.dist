@@ -3,5 +3,9 @@ parameters:
     paths:
         - src
         - tests/Fixtures
-        - config
     tmpDir: build/phpstan
+    # Larastan boots a Testbench application in every PHPStan worker; concurrent
+    # workers race on the skeleton's bootstrap cache (fatal on Windows, flaky
+    # elsewhere). One process keeps analysis deterministic.
+    parallel:
+        maximumNumberOfProcesses: 1

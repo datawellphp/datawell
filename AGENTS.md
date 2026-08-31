@@ -39,4 +39,4 @@ The design pack is the project's memory. It lives in the parent workspace at `..
 
 ## Known Gotchas
 
-- If `composer analyse` fails with `Undefined constant "Larastan\Larastan\LARAVEL_VERSION"`, Larastan's bootstrap (which defines that constant) was skipped on a cached load path — a known Larastan quirk (larastan/larastan#1664), intermittent here. Run `vendor/bin/phpstan clear-result-cache` (and `composer run prepare` if the Testbench manifest is missing) and retry; the package code is not at fault.
+- PHPStan runs single-process on purpose (`parallel.maximumNumberOfProcesses: 1` in `phpstan.neon.dist`): Larastan boots a Testbench application in every worker, and concurrent workers race on the skeleton's `bootstrap/cache` — a hard failure on Windows and the source of intermittent `Undefined constant "Larastan\Larastan\LARAVEL_VERSION"` errors elsewhere. If that constant error still appears, run `vendor/bin/phpstan clear-result-cache` and retry.

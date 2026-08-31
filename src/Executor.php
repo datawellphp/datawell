@@ -127,7 +127,7 @@ class Executor
             return $this->buckets($query, $applied, $definition, $context);
         }
 
-        $order = $this->compiler->sorts($query, $applied->sorts, $definition, $keyName);
+        $order = $this->compiler->sorts($query, $applied->sorts, $definition, $keyName, $context);
 
         $size = $applied->page->size ?? $this->defaultPageSize();
         $total = null;
@@ -180,8 +180,8 @@ class Executor
      */
     protected function buckets(EloquentBuilder|QueryBuilder $query, QueryRequest $applied, Definition $definition, Context $context): BucketResult
     {
-        $this->grouping->compile($query, $applied->groupBy, $applied->aggregates, $definition, $context);
-        $this->grouping->order($query, $applied->groupBy, $applied->aggregates);
+        $columns = $this->grouping->compile($query, $applied->groupBy, $applied->aggregates, $definition, $context);
+        $this->grouping->order($query, $applied->groupBy, $applied->aggregates, $columns);
 
         $cap = $this->bucketCap();
         $query->limit($cap + 1);
@@ -245,7 +245,7 @@ class Executor
 
         $query = $source->query($params);
         $keyName = $this->keyNameOf($query, $source->definition()->model());
-        $row = $query->where($keyName, '=', $id)->first();
+        $row = $query->where(RelationResolver::qualify($query, $keyName), '=', $id)->first();
 
         return $row === null ? null : $this->serializer->ref($row, $source, $keyName);
     }
@@ -332,7 +332,7 @@ class Executor
     }
 
     /**
-     * @param  list<array{string, string, bool}>  $order
+     * @param  list<array{string, string, bool, string}>  $order
      */
     protected function cursorFor(?object $row, array $order): ?string
     {
@@ -341,7 +341,7 @@ class Executor
         }
 
         return Cursor::encode(array_map(static function (array $sort) use ($row): mixed {
-            $value = data_get($row, $sort[0]);
+            $value = data_get($row, $sort[3]);
 
             return $value instanceof DateTimeInterface
                 ? CarbonImmutable::instance($value)->setTimezone('UTC')->format('Y-m-d H:i:s')

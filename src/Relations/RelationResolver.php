@@ -35,6 +35,9 @@ class RelationResolver
     /** @var array<int, DataSource> */
     protected array $targets = [];
 
+    /** @var array<int, array<string, string>> joined relation paths per base query, by alias */
+    protected array $joins = [];
+
     public function __construct(
         protected Registry $registry,
         protected int $cap = 10,
@@ -215,6 +218,61 @@ class RelationResolver
         }
 
         $query->has($path->relation(), $exists ? '>=' : '<', 1, $boolean, $constraint);
+    }
+
+    /**
+     * Sort/group strategy (§6): a left join per relation crossed, aliased deterministically
+     * (`dw_signer`, `dw_document_owner`) and memoised per query so several capabilities
+     * touching one relation share a single join. Joining forces an explicit `base.*`
+     * select so joined columns never shadow the row's own. Returns the alias of the
+     * path's last relation; qualify the column against it.
+     *
+     * @param  EloquentBuilder<covariant Model>|QueryBuilder  $query
+     */
+    public function join(EloquentBuilder|QueryBuilder $query, Path $path): string
+    {
+        if (! $query instanceof EloquentBuilder) {
+            throw new UnsupportedException(sprintf('Joining "%s" needs an Eloquent builder; the source query is a plain query builder.', $path->relation()));
+        }
+
+        $base = $query->getQuery();
+        $id = spl_object_id($base);
+
+        if ($base->columns === null) {
+            $query->select($query->qualifyColumn('*'));
+        }
+
+        $chain = [];
+        $alias = '';
+
+        foreach ($path->relations as $depth => $segment) {
+            $alias = 'dw_'.implode('_', [...array_slice($path->relations, 0, $depth), $segment]);
+            $chain[] = $segment.' as '.$alias;
+            $key = implode('.', array_slice($path->relations, 0, $depth + 1));
+
+            if (isset($this->joins[$id][$key])) {
+                continue;
+            }
+
+            // The join package's mixins are registered at runtime (D50); the first segment
+            // joins from the base, deeper ones join "through" the already-joined prefix.
+            $method = $depth === 0 ? 'leftJoinRelation' : 'leftJoinThroughRelation';
+            $query->{$method}(implode('.', $chain));
+            $this->joins[$id][$key] = $alias;
+        }
+
+        return $alias;
+    }
+
+    /**
+     * A base-table column qualified against the query's table, so it stays unambiguous
+     * once relations are joined. Plain query builders are left as written.
+     *
+     * @param  EloquentBuilder<covariant Model>|QueryBuilder  $query
+     */
+    public static function qualify(EloquentBuilder|QueryBuilder $query, string $column): string
+    {
+        return $query instanceof EloquentBuilder ? $query->qualifyColumn($column) : $column;
     }
 
     /**

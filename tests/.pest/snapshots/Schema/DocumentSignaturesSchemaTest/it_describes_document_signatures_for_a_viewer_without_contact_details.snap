@@ -30,7 +30,9 @@
             "type": "relation",
             "cardinality": "single",
             "source": "people",
+            "sortable": true,
             "filterable": true,
+            "groupable": true,
             "searchable": true,
             "options": {
                 "strategy": "selfFacet"
@@ -176,6 +178,10 @@
         }
     ],
     "sorts": [
+        {
+            "key": "signer",
+            "label": "Signer"
+        },
         {
             "key": "requested_at",
             "label": "Requested At"

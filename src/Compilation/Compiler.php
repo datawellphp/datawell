@@ -14,6 +14,7 @@ use Datawell\Filters\Filter;
 use Datawell\Query\FilterCondition;
 use Datawell\Query\FilterGroup;
 use Datawell\Query\SortSpec;
+use Datawell\Relations\RelationResolver;
 use Datawell\Sorts\Sort;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Eloquent\Model;
@@ -93,15 +94,18 @@ class Compiler
      * Applies the sorts and appends the primary key as a tie-breaker (D39), returning the
      * effective ordering as [column|null, direction] pairs for cursor construction.
      *
+     * A sort through a relation joins it (§6) and selects the joined column under a
+     * private attribute so the cursor can read it back off the row.
+     *
      * @param  EloquentBuilder<covariant Model>|QueryBuilder  $query
      * @param  list<SortSpec>  $sorts
-     * @return list<array{string, string, bool}> column, direction and nullability, ending with the key
+     * @return list<array{string, string, bool, string}> column, direction, nullability and the row attribute holding the value, ending with the key
      */
-    public function sorts(EloquentBuilder|QueryBuilder $query, array $sorts, Definition $definition, string $keyName): array
+    public function sorts(EloquentBuilder|QueryBuilder $query, array $sorts, Definition $definition, string $keyName, Context $context): array
     {
         $order = [];
 
-        foreach ($sorts as $spec) {
+        foreach ($sorts as $index => $spec) {
             $sort = $definition->sorts()[$spec->key] ?? throw new UnsupportedException(sprintf('Sort "%s" reached the compiler unvalidated.', $spec->key));
             $apply = $sort->getApply();
 
@@ -112,23 +116,48 @@ class Compiler
             }
 
             $field = $sort->getField() ?? throw new UnsupportedException(sprintf('Sort "%s" has neither a field nor an apply().', $spec->key));
+            [$column, $attribute, $nullable] = $this->sortColumn($query, $field, $index, $context);
 
-            if (! $field->isColumn()) {
-                throw new UnsupportedException(sprintf('Sort "%s" is relation-backed; relation sorting lands in Phase 3.', $spec->key));
+            if ($nullable) {
+                $query->orderBy(Raw::isNull($query, $column));
             }
 
-            if ($field->isNullable()) {
-                $query->orderBy(Raw::isNull($query, $field->getPath()));
-            }
-
-            $query->orderBy($field->getPath(), $spec->direction);
-            $order[] = [$field->getPath(), $spec->direction, $field->isNullable()];
+            $query->orderBy($column, $spec->direction);
+            $order[] = [$column, $spec->direction, $nullable, $attribute];
         }
 
-        $query->orderBy($keyName, 'asc');
-        $order[] = [$keyName, 'asc', false];
+        $keyColumn = RelationResolver::qualify($query, $keyName);
+        $query->orderBy($keyColumn, 'asc');
+        $order[] = [$keyColumn, 'asc', false, $keyName];
 
         return $order;
+    }
+
+    /**
+     * The column a field sorts by, the attribute its value is read from, and whether
+     * nulls need placing: a relation field sorts by its target's label, and anything
+     * reached through a left join is nullable by construction (D53).
+     *
+     * @param  EloquentBuilder<covariant Model>|QueryBuilder  $query
+     * @return array{string, string, bool}
+     */
+    protected function sortColumn(EloquentBuilder|QueryBuilder $query, Field $field, int $index, Context $context): array
+    {
+        $relations = $context->relations();
+        $path = $field instanceof RelationField && $query instanceof EloquentBuilder
+            ? $relations->labelPath($field, $query->getModel()::class)
+            : $relations->resolveField($query, $field)->path;
+        $column = (string) $path->column;
+
+        if (! $path->crossesRelation()) {
+            return [RelationResolver::qualify($query, $column), $column, $field->isNullable()];
+        }
+
+        $joined = $relations->join($query, $path).'.'.$column;
+        $attribute = 'dw_sort_'.$index;
+        $query->addSelect($joined.' as '.$attribute);
+
+        return [$joined, $attribute, true];
     }
 
     /**
@@ -138,7 +167,7 @@ class Compiler
      * and then by nulls; a null cursor value is followed only by other nulls.
      *
      * @param  EloquentBuilder<covariant Model>|QueryBuilder  $query
-     * @param  list<array{string, string, bool}>  $order
+     * @param  list<array{string, string, bool, string}>  $order
      * @param  list<mixed>  $values
      */
     public function after(EloquentBuilder|QueryBuilder $query, array $order, array $values): void

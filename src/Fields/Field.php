@@ -13,6 +13,7 @@ use Datawell\Enums\Cardinality;
 use Datawell\Exceptions\UnsupportedException;
 use Datawell\Execution\Context;
 use Datawell\Operators\Operator;
+use Datawell\Relations\RelationResolver;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Query\Builder as QueryBuilder;
@@ -275,7 +276,7 @@ abstract class Field
         $path = $resolved->path;
 
         if (! $path->crossesRelation()) {
-            $this->applyColumnCondition($query, $path->column ?? $this->from, $operator, $value, $context);
+            $this->applyColumnCondition($query, RelationResolver::qualify($query, $path->column ?? $this->from), $operator, $value, $context);
 
             return;
         }

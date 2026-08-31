@@ -30,7 +30,9 @@
             "type": "relation",
             "cardinality": "single",
             "source": "people",
+            "sortable": true,
             "filterable": true,
+            "groupable": true,
             "searchable": true,
             "options": {
                 "strategy": "selfFacet"
@@ -41,6 +43,7 @@
             "label": "Signer Email",
             "type": "text",
             "cardinality": "single",
+            "sortable": true,
             "filterable": true,
             "searchable": true,
             "nullable": true
@@ -199,6 +202,14 @@
         }
     ],
     "sorts": [
+        {
+            "key": "signer",
+            "label": "Signer"
+        },
+        {
+            "key": "signer_email",
+            "label": "Signer Email"
+        },
         {
             "key": "requested_at",
             "label": "Requested At"

@@ -83,11 +83,11 @@ class DocumentSignatures extends DataSource
     {
         return [
             RelationField::make('signer', from: 'signer')
-                ->filterable()->searchable()
+                ->sortable()->filterable()->searchable()->groupable()
                 ->options(Options::selfFacet()),
 
             TextField::make('signer_email', from: 'signer.email')
-                ->filterable()->searchable()->nullable()
+                ->sortable()->filterable()->searchable()->nullable()
                 ->visibleWhen('view-contact-details'),
 
             EnumField::make('status', SignatureStatus::class)

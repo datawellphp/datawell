@@ -156,3 +156,86 @@ it('rejects filters on hidden relation-backed fields as unknown', function (): v
     expect(fn () => signatures(['filters' => ['conditions' => [['filter' => 'signer_email', 'operator' => 'contains', 'value' => '@rival.com']]]]))
         ->toThrow(ValidationException::class, 'Unknown filter "signer_email".');
 });
+
+function sorted(array $sorts, array $page = ['size' => 20], $user = null): array
+{
+    return signatures(['sorts' => $sorts, 'page' => $page], $user);
+}
+
+it('sorts by a relation field through its target label, nulls last either way', function (): void {
+    // Labels: 1 Anna, 4 Anna, 2 Ben, 3 Cara, 5 Zed, 6 (no signer)
+    expect(ids(sorted([['key' => 'signer', 'direction' => 'asc']])))->toBe([1, 4, 2, 3, 5, 6])
+        ->and(ids(sorted([['key' => 'signer', 'direction' => 'desc']])))->toBe([5, 3, 2, 1, 4, 6]);
+});
+
+it('sorts by a relation-backed scalar and keeps a row without the relation last', function (): void {
+    // Emails: anna(1,4) ben(2) cara(3) zed(5), none(6)
+    expect(ids(sorted([['key' => 'signer_email', 'direction' => 'desc']], user: test()->privilegedViewer())))->toBe([5, 3, 2, 1, 4, 6]);
+});
+
+it('pages a relation sort by cursor without skipping or repeating rows', function (): void {
+    $walk = [];
+    $after = null;
+
+    do {
+        $page = sorted([['key' => 'signer', 'direction' => 'asc']], ['after' => $after, 'size' => 2]);
+        $walk = [...$walk, ...ids($page)];
+        $after = $page['meta']['nextCursor'];
+    } while ($page['meta']['hasMore']);
+
+    expect($walk)->toBe([1, 4, 2, 3, 5, 6]);
+});
+
+it('pages a relation sort by offset with a total', function (): void {
+    $page = sorted([['key' => 'signer', 'direction' => 'asc']], ['number' => 2, 'size' => 4]);
+
+    expect(ids($page))->toBe([5, 6])->and($page['meta']['total'])->toBe(6);
+});
+
+it('combines a relation sort with relation filters and search on one query', function (): void {
+    $result = signatures([
+        'search' => 'smith',
+        'filters' => ['conditions' => [['filter' => 'tags', 'operator' => 'hasAny', 'value' => [3, 14]]]],
+        'sorts' => [['key' => 'signer', 'direction' => 'desc'], ['key' => 'requested_at', 'direction' => 'asc']],
+        'page' => ['size' => 20],
+    ]);
+
+    expect(ids($result))->toBe([1, 4]);
+});
+
+it('groups by a to-one relation into reference buckets (examples §7)', function (): void {
+    $result = app(Executor::class)->run([
+        'source' => 'document-signatures',
+        'parameters' => ['document_id' => 123],
+        'groupBy' => [['key' => 'signer']],
+        'aggregates' => [['fn' => 'count']],
+    ], test()->viewer())->toArray();
+
+    expect($result['buckets'])->toBe([
+        ['signer' => ['id' => 1, 'label' => 'Anna Smith'], 'count' => 2],
+        ['signer' => ['id' => 2, 'label' => 'Ben Okoro'], 'count' => 1],
+        ['signer' => ['id' => 3, 'label' => 'Cara Smith'], 'count' => 1],
+        ['signer' => ['id' => 11, 'label' => 'Zed Outsider'], 'count' => 1],
+        ['signer' => null, 'count' => 1],
+    ])->and($result['meta'])->toBe(['count' => 5, 'truncated' => false]);
+});
+
+it('groups by a relation with a filter on the same relation without duplicating', function (): void {
+    $result = app(Executor::class)->run([
+        'source' => 'document-signatures',
+        'parameters' => ['document_id' => 123],
+        'filters' => ['conditions' => [['filter' => 'tags', 'operator' => 'hasAny', 'value' => [3, 14]]]],
+        'groupBy' => [['key' => 'signer']],
+        'aggregates' => [['fn' => 'count']],
+    ], test()->viewer())->toArray();
+
+    expect($result['buckets'])->toBe([
+        ['signer' => ['id' => 1, 'label' => 'Anna Smith'], 'count' => 2],
+        ['signer' => ['id' => 2, 'label' => 'Ben Okoro'], 'count' => 1],
+    ]);
+});
+
+it('rejects sorting or grouping by a hidden relation-backed field as unknown', function (): void {
+    expect(fn () => sorted([['key' => 'signer_email', 'direction' => 'asc']]))
+        ->toThrow(ValidationException::class, 'Unknown sort "signer_email".');
+});

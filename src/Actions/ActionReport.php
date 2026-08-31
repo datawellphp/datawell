@@ -17,11 +17,12 @@ use JsonSerializable;
 final class ActionReport implements Arrayable, JsonSerializable
 {
     /**
-     * @param  'completed'|'partial'|'failed'|'queued'  $status
+     * @param  string  $status  'completed' | 'partial' | 'failed' | 'queued'
      * @param  array{targeted: int, succeeded: int, failed: int, skipped: int}  $counts
      * @param  list<array<string, mixed>>  $failures  capped entries: entity ref + reason
      * @param  list<array<string, mixed>>  $skipped  capped entries: entity ref + reason
      * @param  list<array{label: string, url: string}>  $links
+     * @param  array{processed: int, total: int}|null  $progress  counts-so-far for an unfinished queued run (D44)
      */
     public function __construct(
         public readonly string $status,
@@ -32,6 +33,7 @@ final class ActionReport implements Arrayable, JsonSerializable
         public readonly ?string $message = null,
         public readonly array $links = [],
         public readonly ?string $runId = null,
+        public readonly ?array $progress = null,
     ) {}
 
     /**
@@ -57,6 +59,10 @@ final class ActionReport implements Arrayable, JsonSerializable
 
         if ($this->runId !== null) {
             $report['runId'] = $this->runId;
+        }
+
+        if ($this->progress !== null) {
+            $report['progress'] = $this->progress;
         }
 
         return $report;

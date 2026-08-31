@@ -93,8 +93,13 @@ class People extends DataSource
             LinkAction::make('edit')->url(fn (User $user): string => "/people/{$user->id}/edit"),
             ServerAction::make('deactivate')->targets(ActionTarget::Single, ActionTarget::Many)
                 ->description('Deactivate this person.')
+                ->queued()
                 ->authorize(fn (Authenticatable $actor, User $row): bool => $row->role !== Role::Admin->value)
-                ->handle(static fn (): null => null),
+                ->handle(static function ($rows, $input, ActionContext $context): void {
+                    foreach ($rows as $person) {
+                        $person->update(['active' => false]);
+                    }
+                }),
             ServerAction::make('purge')->destructive()->humanOnly()->description('Erase this person.')->handle(static fn (): null => null),
             ServerAction::make('refresh_directory')->targets(ActionTarget::Standalone)
                 ->description('Rebuild the cached people directory.')

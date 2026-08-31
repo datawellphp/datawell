@@ -8,7 +8,9 @@ use Carbon\CarbonImmutable;
 use Datawell\Actions\Action;
 use Datawell\Actions\ActionReport;
 use Datawell\Actions\ActionRequest;
+use Datawell\Actions\Jobs\RunChunk;
 use Datawell\Actions\Runner;
+use Datawell\Actions\Runs\ActionRun;
 use Datawell\Actions\ServerAction;
 use Datawell\Actions\Target;
 use Datawell\Compilation\Compiler;
@@ -40,6 +42,7 @@ use Datawell\Validation\ValidationReport;
 use DateTimeInterface;
 use DateTimeZone;
 use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Contracts\Bus\QueueingDispatcher;
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Contracts\Database\Query\Expression;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
@@ -64,6 +67,7 @@ class Executor
         protected Serializer $serializer,
         protected Repository $config,
         protected Runner $runner,
+        protected QueueingDispatcher $bus,
     ) {
         $this->provenance->using(fn (ValueReference $reference, mixed $value, array $parameters, Context $context): bool => $this->resolvesProvenance($reference, $value, $parameters, $context));
     }
@@ -315,7 +319,116 @@ class Executor
         $keyName = $this->keyNameOf($source->query($params), $definition->model());
         [$rows, $targeted, $skipped, $skippedTruncated] = $this->resolveTarget($action, $request, $source, $definition, $params, $context, $keyName);
 
-        return $this->runner->run($action, $source, $rows, $input, $context, $keyName, $targeted, $skipped, $skippedTruncated);
+        if ($action->isQueued() || $rows->count() > $this->syncActionLimit()) {
+            return $this->queueRun($action, $request, $rows, $context, $keyName, $targeted, $skipped, $skippedTruncated);
+        }
+
+        $report = $this->runner->run($action, $source, $rows, $input, $context, $keyName, $targeted, $skipped, $skippedTruncated);
+
+        if ($this->config->get('datawell.actions.record') === 'always') {
+            $this->recordRun($request, $context, $report);
+        }
+
+        return $report;
+    }
+
+    /**
+     * The run's progress and, once finished, its final report (D44, D45) — for the run's
+     * own user only; anyone else's run id reads as nonexistent (D18).
+     */
+    public function progress(string $runId, Authenticatable $user): ?ActionReport
+    {
+        $run = ActionRun::query()->find($runId);
+
+        if ($run === null || (string) $run->user_id !== (string) $user->getAuthIdentifier()) {
+            return null;
+        }
+
+        return $run->report();
+    }
+
+    /**
+     * Dispatch a run as a bus batch of chunk jobs (D41, D45 tier 1): the run row is
+     * created first, each job folds its chunk in, the last one finalises. The caller
+     * gets the run handle immediately; on a synchronous queue driver the batch has
+     * already run and the report says so.
+     *
+     * @param  Collection<int, object>  $rows
+     * @param  list<array<string, mixed>>  $skipped
+     */
+    protected function queueRun(ServerAction $action, ActionRequest $request, Collection $rows, Context $context, string $keyName, int $targeted, array $skipped, bool $skippedTruncated): ActionReport
+    {
+        $run = new ActionRun;
+        $run->forceFill([
+            'source_key' => $request->source,
+            'action_key' => $action->getKey(),
+            'status' => 'queued',
+            'channel' => $context->channel->value,
+            'user_id' => (string) $context->user->getAuthIdentifier(), // @phpstan-ignore cast.string (auth identifiers are scalar)
+            'approval' => $request->approval,
+            'targeted' => $targeted,
+            'skipped' => $targeted - $rows->count(),
+            'skipped_rows' => $skipped,
+            'truncated' => $skippedTruncated,
+        ])->save();
+
+        $ids = $rows->map(static fn (object $row): mixed => data_get($row, $keyName))->all();
+        $size = max(1, $action->isWholeSet() ? count($ids) : $this->runner->chunkSize($action));
+        $jobs = [];
+
+        foreach (array_chunk($ids, $size) as $chunk) {
+            $jobs[] = new RunChunk($run->id, $request->source, $action->getKey(), $chunk, $request->parameters, $request->input, $context->user, $context->channel);
+        }
+
+        if ($jobs === []) {
+            $run->forceFill(['status' => 'completed', 'finished_at' => now()])->save();
+
+            return $run->report();
+        }
+
+        $batch = $this->bus->batch($jobs)->allowFailures()->name('datawell:'.$action->getKey())->dispatch();
+
+        // Update only the handle: on a sync driver the jobs already rewrote the row.
+        ActionRun::query()->whereKey($run->id)->update(['batch_id' => $batch->id]);
+
+        /** @var ActionRun $fresh */
+        $fresh = ActionRun::query()->findOrFail($run->id);
+
+        return $fresh->report();
+    }
+
+    /**
+     * Tier 2 (D45): under record = 'always', synchronous runs persist too — the audit
+     * trail, channel and approval reference included.
+     */
+    protected function recordRun(ActionRequest $request, Context $context, ActionReport $report): void
+    {
+        (new ActionRun)->forceFill([
+            'source_key' => $request->source,
+            'action_key' => $request->action,
+            'status' => $report->status,
+            'channel' => $context->channel->value,
+            'user_id' => (string) $context->user->getAuthIdentifier(), // @phpstan-ignore cast.string (auth identifiers are scalar)
+            'approval' => $request->approval,
+            'targeted' => $report->counts['targeted'],
+            'processed' => $report->counts['succeeded'] + $report->counts['failed'],
+            'succeeded' => $report->counts['succeeded'],
+            'failed' => $report->counts['failed'],
+            'skipped' => $report->counts['skipped'],
+            'failures' => $report->failures,
+            'truncated' => $report->truncated,
+            'skipped_rows' => $report->skipped,
+            'links' => $report->links,
+            'message' => $report->message,
+            'finished_at' => now(),
+        ])->save();
+    }
+
+    protected function syncActionLimit(): int
+    {
+        $limit = $this->config->get('datawell.actions.sync_limit');
+
+        return is_int($limit) && $limit > 0 ? $limit : 100;
     }
 
     /**

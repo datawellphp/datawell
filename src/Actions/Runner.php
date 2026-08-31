@@ -46,6 +46,20 @@ class Runner
         array $skipped,
         bool $skippedTruncated,
     ): ActionReport {
+        [$entries, $actionContext] = $this->collect($action, $source, $rows, $input, $context, $keyName);
+
+        return $this->report($rows, $entries, $actionContext, $targeted, $skipped, $skippedTruncated);
+    }
+
+    /**
+     * Run the rows through the handler and collect the deduplicated failure entries —
+     * the piece a queued chunk job shares with the synchronous path.
+     *
+     * @param  Collection<int, object>  $rows
+     * @return array{list<array<string, mixed>>, ActionContext}
+     */
+    public function collect(ServerAction $action, DataSource $source, Collection $rows, Params $input, Context $context, string $keyName): array
+    {
         $actionContext = new ActionContext($context);
         $failures = [];
 
@@ -53,7 +67,21 @@ class Runner
             $failures = [...$failures, ...$this->runChunk($action, $chunk, $input, $actionContext, $keyName)];
         }
 
-        return $this->report($action, $source, $rows, $failures, $actionContext, $keyName, $targeted, $skipped, $skippedTruncated);
+        $entries = [];
+        $seen = [];
+
+        foreach ($failures as [$row, $reason]) {
+            $key = $this->keyOf($row, $keyName);
+
+            if (in_array($key, $seen, true)) {
+                continue; // first reason wins; a row fails once
+            }
+
+            $seen[] = $key;
+            $entries[] = $this->entry($row, $reason, $source, $keyName);
+        }
+
+        return [$entries, $actionContext];
     }
 
     /**
@@ -154,36 +182,19 @@ class Runner
 
     /**
      * @param  Collection<int, object>  $rows
-     * @param  list<array{mixed, string}>  $failures
+     * @param  list<array<string, mixed>>  $entries
      * @param  list<array<string, mixed>>  $skipped
      */
     protected function report(
-        ServerAction $action,
-        DataSource $source,
         Collection $rows,
-        array $failures,
+        array $entries,
         ActionContext $context,
-        string $keyName,
         int $targeted,
         array $skipped,
         bool $skippedTruncated,
     ): ActionReport {
         $max = $this->maxFailures();
-        $entries = [];
-        $seen = [];
-
-        foreach ($failures as [$row, $reason]) {
-            $key = $this->keyOf($row, $keyName);
-
-            if (in_array($key, $seen, true)) {
-                continue; // first reason wins; a row fails once
-            }
-
-            $seen[] = $key;
-            $entries[] = $this->entry($row, $reason, $source, $keyName);
-        }
-
-        $failed = count($seen);
+        $failed = count($entries);
         $succeeded = max(0, $rows->count() - $failed);
         $skippedCount = $targeted - $rows->count();
 

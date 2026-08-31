@@ -71,6 +71,23 @@ return new class
             $table->dateTime('sent_at');
             $table->timestamps();
         });
+
+        Schema::dropIfExists('job_batches');
+        Schema::create('job_batches', function (Blueprint $table): void {
+            $table->string('id')->primary();
+            $table->string('name');
+            $table->integer('total_jobs');
+            $table->integer('pending_jobs');
+            $table->integer('failed_jobs');
+            $table->longText('failed_job_ids');
+            $table->mediumText('options')->nullable();
+            $table->integer('cancelled_at')->nullable();
+            $table->integer('created_at');
+            $table->integer('finished_at')->nullable();
+        });
+
+        Schema::dropIfExists('datawell_action_runs');
+        (require dirname(__DIR__, 3).'/database/migrations/create_datawell_action_runs_table.php')->up();
     }
 
     /**

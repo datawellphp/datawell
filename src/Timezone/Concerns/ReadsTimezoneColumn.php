@@ -11,7 +11,9 @@ trait ReadsTimezoneColumn
 {
     public function timezone(): ?string
     {
-        $timezone = $this->getAttribute($this->timezoneColumn());
+        // Read the raw attribute: getAttribute() on a model whose loaded attributes do
+        // not include the column would treat this very method as a relation and recurse.
+        $timezone = $this->getAttributes()[$this->timezoneColumn()] ?? null;
 
         return is_string($timezone) && $timezone !== '' ? $timezone : null;
     }

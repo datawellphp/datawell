@@ -29,6 +29,8 @@ abstract class TestCase extends Orchestra
         $app['config']->set('datawell.sources', [DocumentSignatures::class, Documents::class, Tags::class, People::class]);
         $app['config']->set('datawell.lint.enabled', true);
         $app['config']->set('app.timezone', 'UTC');
+        // Bus batches bookkeep on the default connection, not the queue's own.
+        $app['config']->set('queue.batching.database', null);
 
         // The contract suite runs on SQLite by default; CI (and a developer with the
         // service at hand) points it at MySQL or Postgres through DATAWELL_DB_*.

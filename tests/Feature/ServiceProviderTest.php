@@ -10,11 +10,18 @@ it('merges the package config', function (): void {
         ->and(config('datawell.timezone'))->toBeNull();
 });
 
-it('registers the config file for publishing under the package tags', function (): void {
-    foreach (['datawell', 'datawell-config'] as $tag) {
-        $paths = ServiceProvider::pathsToPublish(DatawellServiceProvider::class, $tag);
+it('registers the config and migrations for publishing under the package tags', function (): void {
+    $config = ServiceProvider::pathsToPublish(DatawellServiceProvider::class, 'datawell-config');
 
-        expect(array_values($paths))->toBe([config_path('datawell.php')])
-            ->and(array_key_first($paths))->toEndWith('config/datawell.php');
-    }
+    expect(array_values($config))->toBe([config_path('datawell.php')])
+        ->and(array_key_first($config))->toEndWith('config/datawell.php');
+
+    $migrations = ServiceProvider::pathsToPublish(DatawellServiceProvider::class, 'datawell-migrations');
+
+    expect(array_values($migrations))->toBe([database_path('migrations')])
+        ->and(array_key_first($migrations))->toEndWith('database/migrations');
+
+    // The umbrella tag carries both.
+    expect(array_values(ServiceProvider::pathsToPublish(DatawellServiceProvider::class, 'datawell')))
+        ->toBe([config_path('datawell.php'), database_path('migrations')]);
 });

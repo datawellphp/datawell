@@ -40,6 +40,8 @@ class DatawellServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
+
         $this->app->booted(function (Application $app): void {
             $this->registerConfiguredSources($app);
         });
@@ -51,6 +53,10 @@ class DatawellServiceProvider extends ServiceProvider
         $this->publishes([
             __DIR__.'/../config/datawell.php' => config_path('datawell.php'),
         ], ['datawell', 'datawell-config']);
+
+        $this->publishesMigrations([
+            __DIR__.'/../database/migrations' => database_path('migrations'),
+        ], ['datawell', 'datawell-migrations']);
 
         $this->commands([
             MakeDatawellCommand::class,

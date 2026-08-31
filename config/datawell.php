@@ -19,4 +19,34 @@ return [
         //
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Timezone
+    |--------------------------------------------------------------------------
+    |
+    | The effective timezone resolves through a chain: the acting user's
+    | HasTimezone contract, then an app-registered resolver, then this
+    | value, then app.timezone. Leave null to fall through to the app.
+    |
+    */
+
+    'timezone' => null,
+
+    /*
+    |--------------------------------------------------------------------------
+    | Definition Lint
+    |--------------------------------------------------------------------------
+    |
+    | Definitions are checked at boot so that wrong ones fail loudly at
+    | authoring time. `enabled` null means "everywhere except production".
+    | Warnings (a missing description, for example) are logged, thrown,
+    | or ignored per `warnings`.
+    |
+    */
+
+    'lint' => [
+        'enabled' => null,
+        'warnings' => 'log',
+    ],
+
 ];

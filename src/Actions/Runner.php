@@ -140,9 +140,11 @@ class Runner
                 throw new UnsupportedException(sprintf('Handler "%s" for action "%s" does not resolve to an object.', $handler, $action->getKey()));
             }
 
-            $handler = method_exists($instance, 'handle')
-                ? $instance->handle(...)
-                : (is_callable($instance) ? $instance(...) : throw new UnsupportedException(sprintf('Handler "%s" for action "%s" has no handle() method and is not invokable.', $instance::class, $action->getKey())));
+            $handler = is_callable([$instance, 'handle']) ? [$instance, 'handle'] : $instance;
+
+            if (! is_callable($handler)) {
+                throw new UnsupportedException(sprintf('Handler "%s" for action "%s" has no handle() method and is not invokable.', $instance::class, $action->getKey()));
+            }
         }
 
         $handler($chunk, $input, $context);

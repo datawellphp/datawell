@@ -4,13 +4,13 @@ This repository is a Laravel package: declarative data sources — define each u
 
 ## Project Documents
 
-The design pack is the project's memory. It lives in the parent workspace at `../docs/` (outside this repository, alongside sibling packages) — read it before changing behavior, and keep it in sync in the same commit as the code it describes.
+The design pack is the project's memory. It lives in the monorepo at `../../docs/` (kept private; it is not copied into this package's published repository) — read it before changing behavior, and keep it in sync in the same commit as the code it describes.
 
-- `../docs/datasource-decision-log.md` — **binding.** Numbered decisions (D01+) with rationale. Never silently re-litigate one; if implementation proves a decision wrong, stop, explain the conflict, and propose an amendment as a new numbered entry. D45 (action-run persistence) is proposed but not approved — do not implement it without the owner's sign-off.
-- `../docs/datasource-package-design.md` — the architecture: concepts, query grammar, permissions, timezone model, relations, executor pipeline, consumers, phased build plan, open questions.
-- `../docs/datasource-examples.md` — one source walked through every feature. PHP snippets are illustrative shape, not final API; the JSON wire formats are near-binding.
-- `../docs/datasource-class-diagram-v2.mermaid`, `../docs/datasource-executor-pipeline.mermaid` — the class model and the enforcement pipeline.
-- `../docs/phase-3-plan.md` — the current build phase's file layout, slices and test plan (`phase-1-plan.md`, `phase-2-plan.md` record the completed phases).
+- `../../docs/datasource-decision-log.md` — **binding.** Numbered decisions (D01+) with rationale. Never silently re-litigate one; if implementation proves a decision wrong, stop, explain the conflict, and propose an amendment as a new numbered entry. D45 (action-run persistence) is proposed but not approved — do not implement it without the owner's sign-off.
+- `../../docs/datasource-package-design.md` — the architecture: concepts, query grammar, permissions, timezone model, relations, executor pipeline, consumers, phased build plan, open questions.
+- `../../docs/datasource-examples.md` — one source walked through every feature. PHP snippets are illustrative shape, not final API; the JSON wire formats are near-binding.
+- `../../docs/datasource-class-diagram-v2.mermaid`, `../../docs/datasource-executor-pipeline.mermaid` — the class model and the enforcement pipeline.
+- `../../docs/phase-3-plan.md` — the current build phase's file layout, slices and test plan (`phase-1-plan.md`, `phase-2-plan.md` record the completed phases).
 
 ## Package Conventions
 

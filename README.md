@@ -7,7 +7,6 @@
     <a href="https://packagist.org/packages/datawell/datawell"><img src="https://img.shields.io/packagist/v/datawell/datawell.svg?style=flat-square" alt="Packagist"></a>
     <a href="https://packagist.org/packages/datawell/datawell"><img src="https://img.shields.io/packagist/php-v/datawell/datawell.svg?style=flat-square" alt="PHP from Packagist"></a>
     <a href="https://packagist.org/packages/datawell/datawell"><img src="https://badge.laravel.cloud/badge/datawell/datawell?style=flat" alt="Laravel versions"></a>
-    <a href="https://github.com/datawellphp/datawell/actions"><img alt="GitHub Workflow Status (main)" src="https://img.shields.io/github/actions/workflow/status/datawellphp/datawell/tests.yml?branch=main&label=Tests&style=flat-square"></a>
     <a href="https://packagist.org/packages/datawell/datawell"><img src="https://img.shields.io/packagist/dt/datawell/datawell.svg?style=flat-square" alt="Total Downloads"></a>
 </p>
 
@@ -57,6 +56,8 @@ php artisan vendor:publish --tag="datawell-config"
 Please see [CHANGELOG](CHANGELOG.md) for more information on what has changed recently.
 
 ## Contributing
+
+This repository is a read-only copy of the `datawell` package, published automatically from Datawell's development repository, so changes aren't merged here directly. Issues and pull requests are still welcome: accepted changes are applied upstream and published back here.
 
 Thank you for considering contributing to Datawell! Please review our [contributing guide](.github/CONTRIBUTING.md) to get started.
 

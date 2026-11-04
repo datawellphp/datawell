@@ -45,9 +45,7 @@ class MakeDatawellCommand extends GeneratorCommand
 
     protected function nameArgument(): string
     {
-        $name = $this->argument('name');
-
-        return is_string($name) ? trim(str_replace('/', '\\', $name), '\\') : '';
+        return trim(str_replace('/', '\\', $this->getNameInput()), '\\');
     }
 
     /**

@@ -10,7 +10,7 @@
     <a href="https://packagist.org/packages/datawell/datawell"><img src="https://img.shields.io/packagist/dt/datawell/datawell.svg?style=flat-square" alt="Total Downloads"></a>
 </p>
 
-> **Status: pre-release, under construction.** The design is complete and the contract layer is being built. There is no usable API yet — this repository claims the namespace and carries the package as it takes shape. Watch the [changelog](CHANGELOG.md) for the first tagged release.
+> **Status: early release (0.x).** The core works and is tested on SQLite, MySQL and Postgres, but its API can still change between minor versions (0.1 → 0.2) until 1.0. See the [changelog](CHANGELOG.md).
 
 ## The idea
 
@@ -23,7 +23,7 @@ Define each unit of data in your application once — its query, fields, filters
 
 One contract, one enforcement point, many consumers.
 
-## Planned packages
+## Packages
 
 | Package | Purpose |
 |---|---|
@@ -31,7 +31,7 @@ One contract, one enforcement point, many consumers.
 | `datawell/tables` | Table UI consumer |
 | `datawell/reports` | Charts and report builder |
 | `datawell/ai` | AI bridge — tool generation from sources |
-| `datawell` (npm) | JS companion for the table component |
+| `datawell` (npm, planned) | JS companion for the table component |
 
 ## Documentation
 
@@ -39,7 +39,7 @@ Documentation will live at [datawell.ebarlow.dev](https://datawell.ebarlow.dev) 
 
 ## Installation
 
-Once released, the package will be installable via Composer:
+Install the package with Composer:
 
 ```bash
 composer require datawell/datawell
